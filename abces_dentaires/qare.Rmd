@@ -1,0 +1,58 @@
+---
+title: "Qare"
+output: html_document
+date: "2023-01-18"
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(stringr)
+library(openxlsx)
+
+qare = read.xlsx("care_plateforme.xlsx", sheet = 1)
+```
+
+```{r data management, echo = F}
+qare = qare %>% select(-c(ticked_cardio_vascular_family, ticked_asthma, ticked_stress, ticked_psycho, ticked_neuroleptics,
+                ticked_bcg, ticked_diphtheria_polio, ticked_tetanus, ticked_pertussis, ticked_haemophilus,
+                ticked_hepatitis_b, ticked_pneumococcus, ticked_meningitis_c, ticked_mmr, ticked_hpv, ticked_influenza,
+                ticked_zona, ticked_food, ticked_diet, ticked_alcohol, ticked_cigarettes, ticked_exercise)) %>% 
+    mutate(
+        consultation_id = as.numeric(as.factor(consultation_id)),
+        patient_id = as.numeric(as.factor(patient_id)),
+        physician_id = as.numeric(as.factor(physician_id))
+        )
+
+
+```
+
+# Age
+```{r}
+qare %>% 
+    ggplot()+
+    geom_bar(aes(x = patient_age_range))+
+    scale_y_continuous(breaks = seq(0,1000,50))+
+    labs(title = "Patient age distribution",
+         y = "Count",
+         x = "Age")
+
+qare %>% 
+    filter(!is.na(patient_gender)) %>% 
+    ggplot()+
+    geom_bar(aes(x = patient_age_range, fill = patient_gender), position = "dodge")+
+    scale_y_continuous(breaks = seq(0,1000,50))+
+    labs(title = "Patient age distribution by sex",
+         y = "Count",
+         x = "Age",
+         fill = "Gender")
+
+
+qare %>% 
+    count(patient_gender, patient_age_range) %>% 
+    group_by(patient_gender) %>% 
+    mutate("%" = round(prop.table(n)*100,2)) %>% 
+    pivot_wider(names_from = patient_gender, values_from = c(n, "%")) %>% 
+    rename("F" = n_F,"M" = n_M,"NA" = n_NA,"F%" = `%_F`,"M%" = `%_M`,"NA%" = `%_NA`) %>% 
+    select(-contains("NA"))
+```
+
