@@ -1,0 +1,425 @@
+---
+title: "Abces dentaires - Rouen"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: 
+    toc: yes
+---
+
+```{r Libraries, include=F}
+library(DT)
+library(openxlsx)
+library(tidyverse)
+library(stringr)
+library(knitr)
+library(ggplot2)
+library(ggrepel)
+library(shiny)
+library(kableExtra)
+```
+
+```{r functions, include=F}
+find_mode <- function(x) {
+  u <- unique(x)
+  tab <- tabulate(match(x, u))
+  u[tab == max(tab)]
+}
+
+## Summarizes data.
+## Gives count, mean, standard deviation, standard error of the mean, and confidence interval (default 95%).
+##   data: a data frame.
+##   measurevar: the name of a column that contains the variable to be summariezed
+##   groupvars: a vector containing names of columns that contain grouping variables
+##   na.rm: a boolean that indicates whether to ignore NA's
+##   conf.interval: the percent range of the confidence interval (default is 95%)
+summarySE <- function(data = NULL, measurevar, groupvars = NULL, na.rm = FALSE,
+                      conf.interval = .95, .drop = TRUE) {
+  library(plyr)
+
+  # New version of length which can handle NA's: if na.rm==T, don't count them
+  length2 <- function(x, na.rm = FALSE) {
+    if (na.rm) {
+      sum(!is.na(x))
+    } else {
+      length(x)
+    }
+  }
+
+  # This does the summary. For each group's data frame, return a vector with
+  # N, mean, and sd
+  datac <- ddply(data, groupvars,
+    .drop = .drop,
+    .fun = function(xx, col) {
+      c(
+        N = length2(xx[[col]], na.rm = na.rm),
+        mean = mean(xx[[col]], na.rm = na.rm),
+        sd = sd(xx[[col]], na.rm = na.rm)
+      )
+    },
+    measurevar
+  )
+
+  # Rename the "mean" column
+  datac <- rename(datac, c("mean" = measurevar))
+
+  datac$se <- datac$sd / sqrt(datac$N) # Calculate standard error of the mean
+
+  # Confidence interval multiplier for standard error
+  # Calculate t-statistic for confidence interval:
+  # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+  ciMult <- qt(conf.interval / 2 + .5, datac$N - 1)
+  datac$ci <- datac$se * ciMult
+
+  return(datac)
+}
+```
+
+```{r LOADING data, include=F }
+# rouen_doc <- read.xlsx("Extraction.xlsx", sheet = 1)
+rouen_sej_pmsi <- read.xlsx("Extraction.xlsx", sheet = 2)
+rouen_atb <- read.xlsx("Extraction.xlsx", sheet = 3)
+rouen_codes_pmsi <- read.xlsx("Extraction.xlsx", sheet = 4)
+rouen_codes_ccam <- read.xlsx("Extraction.xlsx", sheet = 5)
+rouen_concepts_long <- read.xlsx("Extraction.xlsx", sheet = 6)
+rouen_concepts_wide <- read.xlsx("Extraction.xlsx", sheet = 7)
+dictionnaire <- read.xlsx("Extraction.xlsx", sheet = 8, rows = 31:52, cols = 1:2)
+rouen_nomenclature_ccam <- read.xlsx("Extraction.xlsx", sheet = 9)
+```
+
+```{r dm PMSI, include=F}
+# Properly formatting to wide format
+rouen_codes_pmsi <-
+  rouen_codes_pmsi %>%
+  group_by(PATID, EVTID) %>%
+  summarise(PMSI = str_flatten(PMSI))
+# Widening
+rouen_codes_pmsi <- rouen_codes_pmsi %>%
+  mutate(PMSI = str_split_fixed(PMSI, "\\s", n = 50)) %>%
+  apply(2, str_remove, "\\:.+$") %>%
+  data.frame()
+
+# Pivoting back to long format to comfortably erase duplicates then back to wide format
+rouen_codes_pmsi <-
+  pivot_longer(rouen_codes_pmsi, cols = 3:52, values_to = "pmsi") %>%
+  arrange(EVTID, pmsi, by_group = T) %>%
+  select(-name) %>% # dropping "name" column
+  distinct() %>% # dropping duplicates
+  group_by(PATID, EVTID) %>%
+  summarise(pmsi = str_flatten(pmsi, collapse = ",")) %>%
+  mutate(pmsi = str_remove(pmsi, "\\,$|^\\,"))
+# Adding PMSI labels
+rouen_codes_pmsi$pmsi_label <- case_when(
+  str_detect(rouen_codes_pmsi$pmsi, "K047") ~ "Abces periapical",
+  str_detect(rouen_codes_pmsi$pmsi, "K046") ~ "Abces periapical avec fistule",
+  str_detect(rouen_codes_pmsi$pmsi, "K052") ~ "Periodontite aigue",
+  str_detect(rouen_codes_pmsi$pmsi, "K053") ~ "Periodondite",
+  str_detect(rouen_codes_pmsi$pmsi, "K02.") ~ "Carie",
+  str_detect(rouen_codes_pmsi$pmsi, "K088") ~ "Autres affections precisees des dents et du parodonte",
+  str_detect(rouen_codes_pmsi$pmsi, "K089") ~ "Affection des dents et du parodonte, sans precision",
+  str_detect(rouen_codes_pmsi$pmsi, "K040|K045|K048") ~ "Maladies de la pulpe et des tissu périapicaux, autres et sans précision",
+  str_detect(rouen_codes_pmsi$pmsi, "K050|K056") ~ "Maladie périodontale, sans précision",
+  str_detect(rouen_codes_pmsi$pmsi, "K068") ~ "Affection de la gencive et de la crête alvéolaire édentée, sans précision"
+)
+# names to lower case
+names(rouen_codes_pmsi) <- tolower(names(rouen_codes_pmsi))
+
+# Now that DPs always precede DS, we can remove labels to make codes more readable
+rouen_codes_pmsi$pmsi <- rouen_codes_pmsi$pmsi %>% str_remove_all("DS\\'|DP\\'|DD\\'")
+```
+
+```{r dm CCAM, include = FALSE}
+rouen_codes_ccam <-
+  left_join(rouen_codes_ccam, rouen_nomenclature_ccam[c(1, 2)], by = c("CODEACTE" = "Code"))
+# names to lower case
+names(rouen_codes_ccam) <- tolower(names(rouen_codes_ccam))
+```
+
+```{r dm SEJOURS, include = F}
+# names to lower case
+names(rouen_sej_pmsi) <- tolower(names(rouen_sej_pmsi))
+
+# Preparing dictionary for join
+names(dictionnaire) <- c("code", "label")
+dictionnaire$code <- as.character(dictionnaire$code)
+
+# Joining labels to main table
+rouen <-
+  left_join(rouen_sej_pmsi, dictionnaire, by = c("modeent" = "code")) %>%
+  rename(modeent_label = label) %>%
+  left_join(dictionnaire, by = c("modesort" = "code")) %>%
+  rename(modesort_label = label)
+
+# Replacing "retour du domicile" with "retour AU domicile")
+rouen$modesort_label[which(rouen$modesort_label == "Du domicile")] <- "Au domicile"
+```
+
+```{r dm joining tables, include = F}
+names(rouen_codes_pmsi) <- tolower(names(rouen_codes_pmsi))
+# Adding pmsi codes table
+rouen <- left_join(rouen, rouen_codes_pmsi)
+# Adding ccam acts table
+rouen <-
+  left_join(rouen, rouen_codes_ccam[c("patid", "evtid", "codeacte", "texte")]) %>%
+  rename(acte = codeacte, acte_label = texte)
+
+rouen <- distinct(rouen) # erasing eventual duplicates
+```
+
+# Descriptive analysis
+```{r include=F}
+rouen$sejdur <- as.numeric(rouen$sejdur)
+
+unique_ids <- length(unique(rouen$patid))
+unique_stays <- length(unique(rouen$evtid))
+
+rouen$patage <- as.numeric(rouen$patage)
+mean_age <- round(mean(rouen$patage, na.rm = T), 2)
+female_mean_age <- round(by(rouen$patage, rouen$patsex, mean, na.rm = T)[["F"]], 2)
+male_mean_age <- round(by(rouen$patage, rouen$patsex, mean, na.rm = T)[["M"]], 2)
+
+# How many stays started with an arrival from personal home
+entry_mode <- rouen %>%
+  select(evtid, sejum, modeent_label) %>%
+  filter(sejum == "URGE" & modeent_label == "Du domicile") %>%
+  distinct() %>%
+  nrow()
+```
+
+We have `r unique_ids` **unique patients** and `r unique_stays` **unique hospital stays/emergency ward visits** so basically every patient consulted only once for dental problems, at the hospital, over the period of interest which is the calendar year 2021.
+
+## Age
+
+**Mean age** for both sex combined is `r mean_age` years (*sd* = `r round(sd(rouen$patage),2)`) while it's `r female_mean_age` (*sd* = `r round(sd(rouen$patage[rouen$patsex=="F"]),2)`) for women and `r male_mean_age` (*sd* = `r round(sd(rouen$patage[rouen$patsex=="M"]),2)`) for men.
+
+```{r age distribution, echo = F}
+rouen %>%
+  select(patid, evtid, patage, patsex) %>%
+  distinct() %>%
+  ggplot() +
+  geom_histogram(aes(x = patage), binwidth = 5, color = "white", boundary = .5) +
+  scale_x_continuous(breaks = seq(0, 100, 5)) +
+  scale_y_continuous(breaks = seq(0, 100, 10)) +
+  labs(
+    title = "Age distribution",
+    x = "Age",
+    y = "Frequency"
+  )
+
+rouen %>%
+  select(patid, evtid, patage, patsex) %>%
+  distinct() %>%
+  ggplot(aes(x = patage)) +
+  geom_histogram(binwidth = 5, aes(fill = patsex), alpha = .8, position = "identity", boundary = .5) +
+  # geom_density(aes(y = ..density.. * (nrow(rouen) * 5), color = patsex), size = 1)+
+  scale_x_continuous(breaks = seq(0, 100, 5)) +
+  scale_y_continuous(breaks = seq(0, 100, 5)) +
+  labs(
+    title = "Age distribution by sex",
+    x = "Age",
+    y = "Frequency",
+    fill = "Sex"
+  )
+```
+
+## Consultations
+
+`r round((entry_mode/unique_stays)*100,2)`% of the consultations/stays started with a visit to the emergency ward, coming from domicile as it was a selection criteria.
+
+Patient consulted for:
+
+```{r DP de consultation, echo=F, fig.width = 10}
+rouen$pmsi <- str_replace_all(rouen$pmsi, "K040|K045|K048", "K049")
+rouen$pmsi <- str_replace_all(rouen$pmsi, "K050|K056", "K056")
+
+# Frequency table
+rouen %>%
+  select(evtid, pmsi_label) %>%
+  distinct() %>%
+  count(pmsi_label) %>%
+  mutate(freq = paste(round(prop.table(n) * 100, 2), "%", sep = "")) %>%
+  arrange(desc(n)) %>%
+  kable(col.names = c("Main diagnosis", "n", "Freq")) %>%
+  kable_minimal()
+
+# Horizontal histogram
+rouen %>%
+  select(evtid, pmsi_label) %>%
+  distinct() %>%
+  count(pmsi_label) %>%
+  ggplot(aes(
+    y = factor(pmsi_label, levels = pmsi_label[order(n)]), x = n,
+    label = c("K047", "K046", "K068", "K089", "K088", "K02*", "K056", "K049", "K053", "K052")
+  )) +
+  geom_bar(stat = "identity") +
+  geom_label_repel(hjust = "left", nudge_x = 25, arrow = NULL, min.segment.length = 100) +
+  scale_x_continuous(breaks = seq(0, 500, 50)) +
+  theme(
+    axis.text.y = element_text(size = 12),
+    axis.text.x = element_text(size = 12)
+  ) +
+  labs(
+    title = "Main diagnosis",
+    y = "",
+    x = "Frequency"
+  )
+```
+
+## Stays
+**Mean lenght of stay** was `r round(mean(rouen$sejdur,na.rm=T),2)` days with patients spending on average `r round(mean(rouen$sejdur[rouen$sejum=="URGE"],na.rm=T),2)` days in the emergency ward.
+
+```{r shiny table, echo = F, f=T}
+data <- rouen %>%
+  select(1:patsex, modeent_label, modesort_label) %>%
+  filter(sejdur != 0) %>%
+  mutate(modeent_label = str_replace(modeent_label, "Par mutation depuis une unité d'hospitalisation à domicile", "Du domicile")) %>%
+  distinct() %>%
+  arrange(evtid, desc(modesort_label))
+
+tab <- aggregate(sejdur ~ patid + evtid + sejum + patage + patsex + modeent_label, data, sum) %>%
+  group_by(sejum) %>%
+  summarise(visits = n(), total_time = sum(sejdur), mean_time_spent = round(mean(sejdur), 2)) %>%
+  mutate("visits %" = round(prop.table(visits) * 100, 2), "total time %" = round(prop.table(total_time) * 100, 2)) %>%
+  arrange(desc(total_time))
+
+kable(tab, caption = "<b>Entered wards\b", format = "html", col.names = c("Ward", "Visits nb", "Overall time spent", "Mean time spent", "Visits %", "Time spent %")) %>%
+  kable_minimal()
+
+
+
+# Shiny table
+# ui <- fluidPage(
+#  titlePanel("Hospital stays"),
+#
+#  # Create a new row for the table.
+#  DT::dataTableOutput("table")
+# )
+#
+## Load the ggplot2 package which provides
+## the 'mpg' dataset.
+#
+# server <- function(input, output) {
+#  # Filter data based on selections
+#  output$table <- DT::renderDataTable(DT::datatable({
+#    data <- tab
+#    data
+#  }))
+# }
+#
+# shinyApp(ui = ui, server = server)
+```
+
+## Prescriptions
+
+```{r echo=F, warning=F}
+# Creation of column "has atb"
+rouen_atb$has_atb <- ifelse(is.na(rouen_atb$molecule), 0, 1)
+# lowercasing variables
+names(rouen_atb) <- tolower(names(rouen_atb))
+
+total_atb_prescribed <- sum(rouen_atb$has_atb == 1, na.rm = T)
+patient_with_atb <- rouen_atb %>%
+  filter(has_atb == 1) %>%
+  select(patid, has_atb) %>%
+  distinct() %>%
+  nrow()
+
+patient_with_iv <- as.vector(na.omit(rouen_atb$patid[rouen_atb$voie == "iv"]))
+```
+
+Among `r unique_ids` patients, `r patient_with_atb` **received an antibiotic** prescription accounting for a total of `r total_atb_prescribed` **antibiotics prescribed**: `r round(total_atb_prescribed/unique_ids,2)` on **average**, considering the whole sample, `r round((total_atb_prescribed-length(patient_with_iv))/patient_with_atb,2)` if we consider only those who received them.
+
+According to the dataset, `r nrow(rouen_atb[rouen_atb$patid %in% patient_with_iv & rouen_atb$voie=="os",])`
+patients received **both oral and iv antibiotics** and `r length(patient_with_iv)-nrow(rouen_atb[rouen_atb$patid %in% patient_with_iv & rouen_atb$voie=="os",])` patients **only received oral antibiotics**.
+
+```{r prescribed molecules, echo=F, warning=F, message=F}
+right_join(rouen[c("patid", "patage")], rouen_atb) %>%
+  distinct() %>%
+  mutate(patage = cut(patage, breaks = seq(0,100,10), right = F)) %>%
+  group_by(patage) %>%
+  summarise(
+    group = patage,
+    n = n(),
+    mean_value = mean(has_atb, na.rm = T),
+    sd = sd(has_atb, na.rm = T),
+    se = sd / sqrt(`n`),
+    ci = se * qt(.95 / 2 + .5, n - 1)
+  ) %>%
+  ggplot(aes(x = group, y = mean_value)) +
+  geom_errorbar(aes(ymin = mean_value - se, ymax = mean_value + se), width = .1) +
+  geom_line() +
+  geom_point() + 
+  geom_text(aes(label = n), nudge_x = -.2) +
+  labs(title = "Average nb of atb prescriptions by age group",
+       x = "Age",
+       y = "Average nb of atb prescriptions")
+
+
+rouen_atb %>%
+  group_by(voie, molecule) %>%
+  summarise(
+    n = n(),
+    mean_duree = round(mean(duree_prescription, na.rm = T), 2),
+    mode = find_mode(duree_prescription),
+    dose = find_mode(dosage)
+  ) %>%
+  group_by(voie) %>%
+  mutate(
+    "%" = paste(round(prop.table(n) * 100, 2), "%", sep = ""),
+    molecule = str_to_sentence(molecule)
+  ) %>%
+  # Reordering the mess
+  filter(voie != "NA") %>%
+  arrange(voie, desc(n)) %>%
+  select(voie, molecule, dose, n, "%", dose, mean_duree, mode) %>%
+  # Table parameters
+  kable(
+    col.names = c(
+      "Administration site", "Molecule", "Dose", "n", "%",
+      "Mean duration (days)", "Mode"
+    ),
+    caption = "<b>Prescribed molecules\b", format = "html"
+  ) %>%
+  kable_minimal() %>%
+  pack_rows("IV", 1, 3) %>%
+  pack_rows("OS", 4, 16) %>%
+  add_header_above(c("Antibiotic" = 5, "Prescription length" = 2))
+```
+  
+```{r prescribed acts, echo=F, warning=F}
+# Acts
+rouen %>%
+  group_by(acte_label) %>%
+  summarise(n = n(), n_distinct(patid)) %>%
+  arrange(desc(n)) %>%
+  filter(str_detect(acte_label, "adiogra|rx|Rx")) %>%
+  slice(-2) %>%
+  kable(col.names = c("Acte label", "n", "Unique patients")) %>%
+  kable_minimal()
+```
+
+# Regression logistique
+```{r echo=F}
+mod <- right_join(rouen[c("patid", "patage", "patsex", "pmsi_label")], rouen_atb) %>%
+  distinct() %>%
+  mutate(
+    patsex = factor(patsex),
+    pmsi_label = factor(pmsi_label), # Abces periapical mode de reference
+    patage = cut(patage, breaks = c(0, 18, 65, 100))
+  ) %>%
+  glm(has_atb ~ patsex + patage + pmsi_label, data = .)
+
+# summary(mod)
+```
+
+Antibiotics prescription 30% less frequent in "abces pariapical avec fistule" relatively to "abces periapical".
+
+```{r echo=F}
+kable(cbind(
+  round(exp(confint(mod)), 2),
+  "OR" = round(exp(coef(mod)), 2),
+  "p-value" = round(coef(summary(mod))[, "Pr(>|t|)"], 4)
+)) %>%
+  kable_minimal() %>%
+  row_spec(5, bold = T)
+```
