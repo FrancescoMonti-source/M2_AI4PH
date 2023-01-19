@@ -47,12 +47,21 @@ qare %>%
          fill = "Gender")
 
 
-qare %>% 
-    count(patient_gender, patient_age_range) %>% 
-    group_by(patient_gender) %>% 
-    mutate("%" = round(prop.table(n)*100,2)) %>% 
-    pivot_wider(names_from = patient_gender, values_from = c(n, "%")) %>% 
-    rename("F" = n_F,"M" = n_M,"NA" = n_NA,"F%" = `%_F`,"M%" = `%_M`,"NA%" = `%_NA`) %>% 
-    select(-contains("NA"))
+ #pivot_wider(names_from = patient_gender, values_from = c(n, "%")) %>% 
+    #rename("F" = n_F,"M" = n_M,"NA" = n_NA,"F%" = `%_F`,"M%" = `%_M`,"NA%" = `%_NA`) %>% 
+    #select(-contains("NA")) %>% 
+    #mutate(F = paste(`F`," (",`F%`,"%)", sep = ""),
+    #       M = paste(`M`," (",`M%`,"%)", sep = "")) %>% 
+    #select(-`F%`, -`M%`) %>% 
+    #rename("Age_category" = patient_age_range) %>% 
+
+tab = qare %>% select(patient_gender,patient_age_range) 
+
+ggplot(data = tab, aes(x=factor(patient_age_range),fill=patient_gender)) + 
+    geom_bar(data=subset(tab, tab$patient_gender=="F"), position = "identity") + 
+    geom_bar(data=subset(tab, tab$patient_gender=="M"),aes(y=after_stat(count)*(-1))) + 
+    scale_y_continuous(breaks=seq(-1000,1000,100)) + 
+    coord_flip()+
+    labs()
 ```
 

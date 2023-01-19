@@ -190,7 +190,7 @@ entry_mode <- rouen %>%
 
 We have `r unique_ids` **unique patients** and `r unique_stays` **unique hospital stays/emergency ward visits** so basically every patient consulted only once for dental problems, at the hospital, over the period of interest which is the calendar year 2021.
 
-## Age
+## Age & gender
 
 **Mean age** for both sex combined is `r mean_age` years (*sd* = `r round(sd(rouen$patage),2)`) while it's `r female_mean_age` (*sd* = `r round(sd(rouen$patage[rouen$patsex=="F"]),2)`) for women and `r male_mean_age` (*sd* = `r round(sd(rouen$patage[rouen$patsex=="M"]),2)`) for men.
 
@@ -222,6 +222,19 @@ rouen %>%
     y = "Frequency",
     fill = "Sex"
   )
+
+rouen %>% 
+    count(patsex) %>% 
+    mutate(prop = round(prop.table(n)*100,2)) %>% 
+    mutate(lab.ypos = cumsum(prop) - 0.5*prop) %>% 
+
+ggplot(aes(x = "", y = prop, fill = patsex)) +
+  geom_bar(width = 1, stat = "identity", color = "white") +
+  coord_polar("y", start = 0)+
+  geom_text(aes(y = lab.ypos, label = paste(prop,"% ","(",n,")", sep="")), color = "black")+
+  #scale_fill_manual(values = mycols) +
+  theme_void()+
+    labs(fill = "Gender", title = "Gender representation")
 ```
 
 ## Consultations
