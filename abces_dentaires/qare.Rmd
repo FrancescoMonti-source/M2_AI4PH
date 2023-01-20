@@ -26,6 +26,18 @@ qare = qare %>% select(-c(ticked_cardio_vascular_family, ticked_asthma, ticked_s
 
 ```
 
+- nb total de TC étudiées? `r length(unique(qare$consultation_id))` 
+nb de patients ayant effectué ces TC?  
+Répartition par mois du nb de TC?
+Répartition par saison du nombre de TC?
+proportion de TC ayant abouti à la prescription d’un antibio
+dans les CIM10: créer une catégorie abcès/périondotite, une catégorie carie et une catégorie autre affections nombre de CIM 10 
+pour chacune de ces 3 catégories donner le nombre et la proportion des TC?
+durée moyenne des TC
+nombre moyen de TC déjà réalisées par ces patients
+
+
+
 # Age
 ```{r}
 qare %>% 
