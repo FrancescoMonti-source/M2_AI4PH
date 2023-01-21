@@ -1,6 +1,8 @@
 ---
 title: "Qare"
-output: html_document
+output: 
+  html_document: 
+    toc: yes
 date: "2023-01-18"
 ---
 
@@ -10,119 +12,252 @@ library(stringr)
 library(openxlsx)
 library(lubridate)
 library(fmckage)
-library(pander)        # Function `pander()` to report results of statistical analysis.
-library(knitr)         # Function `kable()` to convert data frames into tables for reports.
-library(DT)            # Interactive tables for HTML documents (DataTables).
-library(gt)            # Easily Create Presentation-Ready Display Tables.
-library(flextable)     # Functions for Tabular Reporting.
+library(pander) # Function `pander()` to report results of statistical analysis.
+library(knitr) # Function `kable()` to convert data frames into tables for reports.
+library(DT) # Interactive tables for HTML documents (DataTables).
+library(gt) # Easily Create Presentation-Ready Display Tables.
+library(flextable) # Functions for Tabular Reporting.
+library(knitr)
 
-
-qare = read.xlsx("care_plateforme.xlsx", sheet = 1)
+qare <- read.xlsx("care_plateforme.xlsx", sheet = 1)
 ```
 
 ```{r data management, echo = F}
-qare = qare %>% select(-c(ticked_cardio_vascular_family, ticked_asthma, ticked_stress, ticked_psycho, ticked_neuroleptics,
-                ticked_bcg, ticked_diphtheria_polio, ticked_tetanus, ticked_pertussis, ticked_haemophilus,
-                ticked_hepatitis_b, ticked_pneumococcus, ticked_meningitis_c, ticked_mmr, ticked_hpv, ticked_influenza,
-                ticked_zona, ticked_food, ticked_diet, ticked_alcohol, ticked_cigarettes, ticked_exercise)) %>% 
-    mutate(
-        consultation_id = as.numeric(as.factor(consultation_id)),
-        patient_id = as.numeric(as.factor(patient_id)),
-        physician_id = as.numeric(as.factor(physician_id))
-        )
-
+qare <- qare %>%
+  select(-c(
+    ticked_cardio_vascular_family, ticked_asthma, ticked_stress, ticked_psycho, ticked_neuroleptics,
+    ticked_bcg, ticked_diphtheria_polio, ticked_tetanus, ticked_pertussis, ticked_haemophilus,
+    ticked_hepatitis_b, ticked_pneumococcus, ticked_meningitis_c, ticked_mmr, ticked_hpv, ticked_influenza,
+    ticked_zona, ticked_food, ticked_diet, ticked_alcohol, ticked_cigarettes, ticked_exercise
+  )) %>%
+  mutate(
+    consultation_id = as.numeric(as.factor(consultation_id)),
+    patient_id = as.numeric(as.factor(patient_id)),
+    physician_id = as.numeric(as.factor(physician_id))
+  )
 ```
 
--   nb total de TC étudiées? `r length(unique(qare$consultation_id))`
+# Teleconsultations
+### nb total de TC étudiées? 
+`r length(unique(qare$consultation_id))`
 
--   nb de patients ayant effectué ces TC? `r length(unique(qare$patient_id))`
+### nb de patients ayant effectué ces TC?
+`r length(unique(qare$patient_id))`
 
--   Répartition par mois du nb de TC?
+### Répartition par mois du nb de TC?
+
 ```{r echo=F}
 month(qare$day) %>%
-    factor(labels = c("January","February","Mars","April","May","June","July",
-                      "August","September","October","November","December")) %>%
-    table %>% as.data.frame() %>% 
-    ggplot()+
-    geom_col(aes(x=., y=Freq))+
-    scale_y_continuous(breaks=seq(0,1000,25))+
-    labs(title = "TCs by month",
-         x="",
-         y="Count")
-
+  factor(labels = c(
+    "January", "February", "Mars", "April", "May", "June", "July",
+    "August", "September", "October", "November", "December"
+  )) %>%
+  table() %>%
+  as.data.frame() %>%
+  ggplot() +
+  geom_col(aes(x = ., y = Freq)) +
+  scale_y_continuous(breaks = seq(0, 1000, 25)) +
+  labs(
+    title = "TCs by month",
+    x = "",
+    y = "Count"
+  )
 ```
 
--   Répartition par saison du nombre de TC?
+### Répartition par saison du nombre de TC?
 ```{r, echo=F}
-getSeason(qare$day) %>% table %>% as.data.frame() %>% 
-    ggplot()+
-    geom_col(aes(x=., y=Freq))+
-    scale_y_continuous(breaks=seq(0,1000,50))+
-    labs(title = "TCs by season",
-         x="",
-         y="Count")
-
+getSeason(qare$day) %>%
+  table() %>%
+  as.data.frame() %>%
+  ggplot() +
+  geom_col(aes(x = ., y = Freq)) +
+  scale_y_continuous(breaks = seq(0, 1000, 50)) +
+  labs(
+    title = "TCs by season",
+    x = "",
+    y = "Count"
+  )
 ```
 
--   proportion de TC ayant abouti à la prescription d'un antibio dans les CIM10: créer une catégorie abcès/périondotite, une catégorie carie et une catégorie autre affections nombre de CIM 10 pour chacune de ces 3 catégories donner le nombre et la proportion des TC?
+### Proportion de TC ayant abouti à la prescription d'un antibio dans les CIM10
+une catégorie abcès/périondotite, une catégorie carie et une catégorie autre affections nombre de CIM 10 pour chacune de ces 3 catégories donner le nombre et la proportion des TC?
+
 ```{r echo=F}
-qare %>% 
-    mutate(cim10 = case_when(
-        str_detect(cim10,"Abcès|périodontite") ~ "Abcès/périodontite",
-        str_detect(qare$cim10,"Carie") ~ "Carie",
-        TRUE ~ "Autre")) %>%
-    data.frame %>% 
-    count(cim10) %>% mutate("%" = round(prop.table(n)*100,2)) %>% kable
+qare %>%
+  # filter(has_antibiotic==1) %>%
+  mutate(cim10 = case_when(
+    str_detect(cim10, "Abcès|périodontite") ~ "Abcès/périodontite",
+    str_detect(cim10, "Carie") ~ "Carie",
+    TRUE ~ "Autre"
+  )) %>%
+  data.frame() %>%
+  count(cim10, has_antibiotic) %>%
+  group_by(cim10) %>%
+  mutate("%" = round(prop.table(n) * 100, 2)) %>%
+    arrange(cim10,desc(has_antibiotic)) %>% 
+  kable()
 ```
 
+### Durée moyenne des TC 
+`r round(mean(qare$consultation_duration,na.rm=T),2) %>% seconds_to_period()`
 
--   durée moyenne des TC **`r round(mean(qare$consultation_duration,na.rm=T),2) %>% seconds_to_period()`**
-```{r, echo=F}
+### Nombre moyen de TC déjà réalisées par ces patients 
+`r mean(qare$nb_consultations_completed, na.rm=T)`
 
-```
+### Nombre moyen de TC déjà réalisées, same topic, par ces patients 
+`r mean(qare$nb_consultations_completed_same_topic, na.rm=T)`
 
-
-- nombre moyen de TC déjà réalisées par ces patients `r mean(qare$nb_consultations_completed, na.rm=T)`
-
-- nombre moyen de TC déjà réalisées, same topic, par ces patients `r mean(qare$nb_consultations_completed_same_topic, na.rm=T)`
 ```{r echo=F}
 table(qare$nb_consultations_completed_same_topic) %>%
   data.frame() %>%
-  rename(Nb_consultation = Var1) %>%
+  rename(Nb_consultation_same_topic = Var1) %>%
   mutate("%" = round(prop.table(Freq) * 100, 2)) %>%
   kable()
 ```
 
-
-# Age
+# Patients
+### Age distribution
 ```{r echo=F}
-qare %>% 
-    ggplot()+
-    geom_bar(aes(x = patient_age_range))+
-    scale_y_continuous(breaks = seq(0,1000,50))+
-    labs(title = "Patient age distribution",
-         y = "Count",
-         x = "Age")
+qare %>%
+  select(patient_id, patient_age_range) %>%
+  distinct() %>%
+  ggplot() +
+  geom_bar(aes(x = patient_age_range)) +
+  scale_y_continuous(breaks = seq(0, 1000, 50)) +
+  labs(
+    title = "Patient's age distribution",
+    y = "Count",
+    x = "Age"
+  )
 
-qare %>% 
-    filter(!is.na(patient_gender)) %>% 
-    ggplot()+
-    geom_bar(aes(x = patient_age_range, fill = patient_gender), position = "dodge")+
-    scale_y_continuous(breaks = seq(0,1000,50))+
-    labs(title = "Patient age distribution by sex",
-         y = "Count",
-         x = "Age",
-         fill = "Gender")
+tab <- qare %>%
+  select(patient_id, patient_gender, patient_age_range) %>%
+  distinct()
 
-
-tab = qare %>% select(patient_gender,patient_age_range) 
-
-ggplot(data = tab, aes(x=factor(patient_age_range),fill=patient_gender)) + 
-    geom_bar(data=subset(tab, tab$patient_gender=="F"), position = "identity") + 
-    geom_bar(data=subset(tab, tab$patient_gender=="M"),aes(y=after_stat(count)*(-1))) + 
-    scale_y_continuous(breaks=seq(-1000,1000,50)) + 
-    coord_flip()+
-    labs(y = "Count",
-         x = "Age", 
-         fill = "Gender")
+ggplot(data = tab, aes(x = factor(patient_age_range), fill = patient_gender)) +
+  geom_bar(data = subset(tab, tab$patient_gender == "F"), position = "identity") +
+  geom_bar(data = subset(tab, tab$patient_gender == "M"), aes(y = after_stat(count) * (-1))) +
+  scale_y_continuous(breaks = seq(-1000, 1000, 50)) +
+  coord_flip() +
+  labs(
+    y = "Count",
+    x = "Age",
+    fill = "Gender", title = "Patient's age distribution by sex"
+  )
 ```
+
+# Physicians
+### Nombre de prats ayant réalisé les TC
+`r length(unique(qare$physician_id))`
+
+### Réparition par genre homme ou femme
+```{r echo=F}
+qare %>%
+  count(physician_gender) %>%
+  mutate("%" = round(proportions(n) * 100, 2)) %>%
+  slice(-3) %>%
+  kable()
+```
+
+### Répartition par classe d’age
+```{r echo=F}
+qare %>%
+  select(physician_id, physician_age_range) %>%
+  distinct() %>%
+  ggplot() +
+  geom_bar(aes(x = physician_age_range)) +
+  scale_y_continuous(breaks = seq(0, 100, 10)) +
+  labs(
+    title = "Physician's age distribution",
+    y = "Count",
+    x = "Age"
+  )
+
+# Pyramid age by sex
+tab <- qare %>%
+  select(physician_id, physician_gender, physician_age_range) %>%
+  distinct()
+ggplot(data = tab, aes(x = factor(physician_age_range), fill = physician_gender)) +
+  geom_bar(data = subset(tab, tab$physician_gender == "Femme"), position = "identity") +
+  geom_bar(data = subset(tab, tab$physician_gender == "Homme"), aes(y = after_stat(count) * (-1))) +
+  scale_y_continuous(breaks = seq(-100, 100, 5)) +
+  coord_flip() +
+  labs(
+    y = "Count",
+    x = "Age",
+    fill = "Gender", title = "Physician's age distribution by sex"
+  )
+```
+
+
+### Répartition par spécialité (dentiste? médecin généraliste?)
+```{r echo=F}
+qare %>%
+  count(speciality) %>%
+  arrange(desc(n)) %>%
+  mutate("%" = round(proportions(n) * 100, 2)) %>%
+  kable()
+```
+
+### Réparition par type d’offre
+```{r echo=F}
+qare %>%
+  count(offer) %>%
+  arrange(desc(n)) %>%
+  mutate("%" = round(proportions(n) * 100, 2)) %>%
+  kable()
+```
+
+
+# Antibiotics
+```{r}
+qare %>%
+  separate_rows(c(molecule_filled, is_antibiotic, duration), sep = "\\|") %>%
+  select(molecule_filled, is_antibiotic, duration) %>%
+  mutate(molecule_filled = str_squish(molecule_filled), is_antibiotic = str_squish(is_antibiotic)) %>%
+  rename(Molecule = molecule_filled, Atb = is_antibiotic) %>%
+  filter(str_detect(Atb, "True|TRUE")) %>%
+  mutate(
+    Molecule =
+      str_replace(
+        Molecule,
+        "(?i).*(amoxicilline.*clavulanique|clavulanique.*amoxicilline).*", "Augmentin"
+      ),
+    Molecule =
+      str_replace(
+        Molecule,
+        "(?i).*(metronidazole.*spiramycine|spyramicine.*metronidazole).*", "Metronidazole+Spyramicine"
+      ),
+    Molecule =
+      str_replace(
+        Molecule,
+        "(?i).*(clindamycine).*", "Clindamycine"
+      ),
+    Molecule = str_to_title(Molecule)
+  ) %>%
+  count(Molecule) %>%
+  mutate("%" = round(proportions(n) * 100, 2)) %>%
+  arrange(desc(n)) %>%
+  kable()
+```
+
+
+### Proportion d’antiinflammatoires prescrits (= toute molécule qui se termine en fene)
+```{r echo=F}
+table(str_detect(qare$molecule_filled, ".*fene\\b"), useNA = "ifany") %>%
+  data.frame() %>%
+  mutate("%" = round(proportions(Freq) * 100, 2)) %>%
+  kable(col.names = c("", "n", "%"), caption = "Has anti-inflammatory")
+```
+
+
+### Nombre de prescription de radiologies
+```{r echo=F}
+str_detect(qare$imagery_category, "(?i)radio") %>% 
+    table(useNA="ifany") %>% 
+data.frame() %>%
+  mutate("%" = round(proportions(Freq) * 100, 2)) %>%
+  kable(col.names = c("", "n", "%"), caption = "Rx precribed?")
+
+```
+
