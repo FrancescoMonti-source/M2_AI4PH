@@ -8,6 +8,14 @@ date: "2023-01-18"
 library(tidyverse)
 library(stringr)
 library(openxlsx)
+library(lubridate)
+library(fmckage)
+library(pander)        # Function `pander()` to report results of statistical analysis.
+library(knitr)         # Function `kable()` to convert data frames into tables for reports.
+library(DT)            # Interactive tables for HTML documents (DataTables).
+library(gt)            # Easily Create Presentation-Ready Display Tables.
+library(flextable)     # Functions for Tabular Reporting.
+
 
 qare = read.xlsx("care_plateforme.xlsx", sheet = 1)
 ```
@@ -23,23 +31,71 @@ qare = qare %>% select(-c(ticked_cardio_vascular_family, ticked_asthma, ticked_s
         physician_id = as.numeric(as.factor(physician_id))
         )
 
+```
+
+-   nb total de TC étudiées? `r length(unique(qare$consultation_id))`
+
+-   nb de patients ayant effectué ces TC? `r length(unique(qare$patient_id))`
+
+-   Répartition par mois du nb de TC?
+```{r echo=F}
+month(qare$day) %>%
+    factor(labels = c("January","February","Mars","April","May","June","July",
+                      "August","September","October","November","December")) %>%
+    table %>% as.data.frame() %>% 
+    ggplot()+
+    geom_col(aes(x=., y=Freq))+
+    scale_y_continuous(breaks=seq(0,1000,25))+
+    labs(title = "TCs by month",
+         x="",
+         y="Count")
 
 ```
 
-- nb total de TC étudiées? `r length(unique(qare$consultation_id))` 
-nb de patients ayant effectué ces TC?  
-Répartition par mois du nb de TC?
-Répartition par saison du nombre de TC?
-proportion de TC ayant abouti à la prescription d’un antibio
-dans les CIM10: créer une catégorie abcès/périondotite, une catégorie carie et une catégorie autre affections nombre de CIM 10 
-pour chacune de ces 3 catégories donner le nombre et la proportion des TC?
-durée moyenne des TC
-nombre moyen de TC déjà réalisées par ces patients
+-   Répartition par saison du nombre de TC?
+```{r, echo=F}
+getSeason(qare$day) %>% table %>% as.data.frame() %>% 
+    ggplot()+
+    geom_col(aes(x=., y=Freq))+
+    scale_y_continuous(breaks=seq(0,1000,50))+
+    labs(title = "TCs by season",
+         x="",
+         y="Count")
 
+```
+
+-   proportion de TC ayant abouti à la prescription d'un antibio dans les CIM10: créer une catégorie abcès/périondotite, une catégorie carie et une catégorie autre affections nombre de CIM 10 pour chacune de ces 3 catégories donner le nombre et la proportion des TC?
+```{r echo=F}
+qare %>% 
+    mutate(cim10 = case_when(
+        str_detect(cim10,"Abcès|périodontite") ~ "Abcès/périodontite",
+        str_detect(qare$cim10,"Carie") ~ "Carie",
+        TRUE ~ "Autre")) %>%
+    data.frame %>% 
+    count(cim10) %>% mutate("%" = round(prop.table(n)*100,2)) %>% kable
+```
+
+
+-   durée moyenne des TC **`r round(mean(qare$consultation_duration,na.rm=T),2) %>% seconds_to_period()`**
+```{r, echo=F}
+
+```
+
+
+- nombre moyen de TC déjà réalisées par ces patients `r mean(qare$nb_consultations_completed, na.rm=T)`
+
+- nombre moyen de TC déjà réalisées, same topic, par ces patients `r mean(qare$nb_consultations_completed_same_topic, na.rm=T)`
+```{r echo=F}
+table(qare$nb_consultations_completed_same_topic) %>%
+  data.frame() %>%
+  rename(Nb_consultation = Var1) %>%
+  mutate("%" = round(prop.table(Freq) * 100, 2)) %>%
+  kable()
+```
 
 
 # Age
-```{r}
+```{r echo=F}
 qare %>% 
     ggplot()+
     geom_bar(aes(x = patient_age_range))+
@@ -59,21 +115,14 @@ qare %>%
          fill = "Gender")
 
 
- #pivot_wider(names_from = patient_gender, values_from = c(n, "%")) %>% 
-    #rename("F" = n_F,"M" = n_M,"NA" = n_NA,"F%" = `%_F`,"M%" = `%_M`,"NA%" = `%_NA`) %>% 
-    #select(-contains("NA")) %>% 
-    #mutate(F = paste(`F`," (",`F%`,"%)", sep = ""),
-    #       M = paste(`M`," (",`M%`,"%)", sep = "")) %>% 
-    #select(-`F%`, -`M%`) %>% 
-    #rename("Age_category" = patient_age_range) %>% 
-
 tab = qare %>% select(patient_gender,patient_age_range) 
 
 ggplot(data = tab, aes(x=factor(patient_age_range),fill=patient_gender)) + 
     geom_bar(data=subset(tab, tab$patient_gender=="F"), position = "identity") + 
     geom_bar(data=subset(tab, tab$patient_gender=="M"),aes(y=after_stat(count)*(-1))) + 
-    scale_y_continuous(breaks=seq(-1000,1000,100)) + 
+    scale_y_continuous(breaks=seq(-1000,1000,50)) + 
     coord_flip()+
-    labs()
+    labs(y = "Count",
+         x = "Age", 
+         fill = "Gender")
 ```
-
