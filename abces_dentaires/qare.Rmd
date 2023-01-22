@@ -18,6 +18,8 @@ library(DT) # Interactive tables for HTML documents (DataTables).
 library(gt) # Easily Create Presentation-Ready Display Tables.
 library(flextable) # Functions for Tabular Reporting.
 library(knitr)
+library(kableExtra)
+library(fmckage)
 
 qare <- read.xlsx("care_plateforme.xlsx", sheet = 1)
 ```
@@ -86,7 +88,7 @@ une catégorie abcès/périondotite, une catégorie carie et une catégorie autr
 qare %>%
   # filter(has_antibiotic==1) %>%
   mutate(cim10 = case_when(
-    str_detect(cim10, "Abcès|périodontite") ~ "Abcès/périodontite",
+    str_detect(cim10, "Abcès|périodontite|parodonte") ~ "Abcès/périodontite",
     str_detect(cim10, "Carie") ~ "Carie",
     TRUE ~ "Autre"
   )) %>%
@@ -94,8 +96,9 @@ qare %>%
   count(cim10, has_antibiotic) %>%
   group_by(cim10) %>%
   mutate("%" = round(prop.table(n) * 100, 2)) %>%
-    arrange(cim10,desc(has_antibiotic)) %>% 
-  kable()
+  arrange(cim10, desc(has_antibiotic)) %>%
+  kable() %>%
+  kable_minimal()
 ```
 
 ### Durée moyenne des TC 
@@ -112,7 +115,8 @@ table(qare$nb_consultations_completed_same_topic) %>%
   data.frame() %>%
   rename(Nb_consultation_same_topic = Var1) %>%
   mutate("%" = round(prop.table(Freq) * 100, 2)) %>%
-  kable()
+  kable() %>%
+  kable_minimal()
 ```
 
 # Patients
@@ -156,7 +160,8 @@ qare %>%
   count(physician_gender) %>%
   mutate("%" = round(proportions(n) * 100, 2)) %>%
   slice(-3) %>%
-  kable()
+  kable() %>%
+  kable_minimal()
 ```
 
 ### Répartition par classe d’age
@@ -196,7 +201,8 @@ qare %>%
   count(speciality) %>%
   arrange(desc(n)) %>%
   mutate("%" = round(proportions(n) * 100, 2)) %>%
-  kable()
+  kable() %>%
+  kable_minimal()
 ```
 
 ### Réparition par type d’offre
@@ -205,12 +211,13 @@ qare %>%
   count(offer) %>%
   arrange(desc(n)) %>%
   mutate("%" = round(proportions(n) * 100, 2)) %>%
-  kable()
+  kable() %>%
+  kable_minimal()
 ```
 
 
 # Antibiotics
-```{r}
+```{r echo=F}
 qare %>%
   separate_rows(c(molecule_filled, is_antibiotic, duration), sep = "\\|") %>%
   select(molecule_filled, is_antibiotic, duration) %>%
@@ -238,7 +245,8 @@ qare %>%
   count(Molecule) %>%
   mutate("%" = round(proportions(n) * 100, 2)) %>%
   arrange(desc(n)) %>%
-  kable()
+  kable() %>%
+  kable_minimal()
 ```
 
 
@@ -247,17 +255,90 @@ qare %>%
 table(str_detect(qare$molecule_filled, ".*fene\\b"), useNA = "ifany") %>%
   data.frame() %>%
   mutate("%" = round(proportions(Freq) * 100, 2)) %>%
-  kable(col.names = c("", "n", "%"), caption = "Has anti-inflammatory")
+  kable(col.names = c("", "n", "%"), caption = "Has anti-inflammatory") %>%
+  kable_minimal()
 ```
 
 
 ### Nombre de prescription de radiologies
 ```{r echo=F}
-str_detect(qare$imagery_category, "(?i)radio") %>% 
-    table(useNA="ifany") %>% 
-data.frame() %>%
+str_detect(qare$imagery_category, "(?i)radio") %>%
+  table(useNA = "ifany") %>%
+  data.frame() %>%
   mutate("%" = round(proportions(Freq) * 100, 2)) %>%
-  kable(col.names = c("", "n", "%"), caption = "Rx precribed?")
-
+  kable(col.names = c("", "n", "%"), caption = "Rx precribed?") %>%
+  kable_minimal()
 ```
 
+# Logistic regression
+```{r echo=F, include = F}
+# age des patients
+# sexe des patients
+# départements
+# age des prats
+# sexe des prats
+# catégorie de pathologie (carie, abcès/périodontite ou autre)
+# spécialité (med gé ou dentiste)
+# durée de la TC
+
+summary(glm(data = qare, has_antibiotic ~ patient_age_range))
+glm(data = qare, has_antibiotic ~ patient_gender) %>% summary()
+glm(data = qare, has_antibiotic ~ department_code) %>% summary()
+glm(data = qare, has_antibiotic ~ physician_gender) %>% summary()
+glm(data = qare, has_antibiotic ~ physician_age_range) %>% summary()
+
+qare <- qare %>%
+  mutate(cim10 = case_when(
+    str_detect(cim10, "Abcès|périodontite") ~ "Abcès/périodontite",
+    str_detect(cim10, "Carie") ~ "Carie",
+    TRUE ~ "Autre"
+  ))
+
+glm(data = qare, has_antibiotic ~ cim10) %>% summary()
+summary(glm(
+  data = qare, has_antibiotic ~ speciality,
+  subset = (str_detect(qare$speciality, "dentist|general-practician"))
+))
+
+
+
+qare <- qare %>%
+  mutate(
+    patient_age_range = factor(patient_age_range,
+      labels = c(
+        "0-20", "0-20",
+        "21-60", "21-60", "21-60", "21-60",
+        "61-100", "61-100", "61-100", "61-100"
+      )
+    ),
+    physician_age_range = factor(physician_age_range,
+      labels = c(
+        "21-60", "21-60", "21-60", "21-60",
+        "61-100", "61-100"
+      )
+    )
+  )
+```
+
+
+```{r echo=F}
+mod <- glm(
+  data = qare, has_antibiotic ~ speciality + patient_gender + patient_age_range + physician_gender + physician_age_range + cim10,
+  subset = (str_detect(qare$speciality, "dentist|general-practician"))
+)
+
+cbind(round(exp(confint(mod)), 2),
+  "OR" = round(exp(coef(mod)), 2),
+  "p-value" = round(coef(summary(mod))[, "Pr(>|t|)"], 5)
+) %>%
+  data.frame() %>%
+  mutate("p.value" = pval_format(p.value)) %>%
+  kable(col.names = c("2.5%", "97.5%", "OR", "p-value")) %>%
+  kable_minimal() %>%
+  row_spec(c(4, 5, 8, 9), bold = T)
+```
+
+La prescription d'atb est **34%** plus fréquent dans le groupe 21-60 ans et **35%** plus fréquent
+dans le groupe 60+ ans (par rapport aux <20ans).  
+La prescription d'atb est **6%** moins fréquents dans la categorie "autre pathologie" et **14%** moins
+frèquents pour les caries (par rapport aux abcès/périodontite).

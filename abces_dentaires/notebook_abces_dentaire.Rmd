@@ -19,63 +19,9 @@ library(ggplot2)
 library(ggrepel)
 library(shiny)
 library(kableExtra)
+library(fmckage)
 ```
 
-```{r functions, include=F}
-find_mode <- function(x) {
-  u <- unique(x)
-  tab <- tabulate(match(x, u))
-  u[tab == max(tab)]
-}
-
-## Summarizes data.
-## Gives count, mean, standard deviation, standard error of the mean, and confidence interval (default 95%).
-##   data: a data frame.
-##   measurevar: the name of a column that contains the variable to be summariezed
-##   groupvars: a vector containing names of columns that contain grouping variables
-##   na.rm: a boolean that indicates whether to ignore NA's
-##   conf.interval: the percent range of the confidence interval (default is 95%)
-summarySE <- function(data = NULL, measurevar, groupvars = NULL, na.rm = FALSE,
-                      conf.interval = .95, .drop = TRUE) {
-  library(plyr)
-
-  # New version of length which can handle NA's: if na.rm==T, don't count them
-  length2 <- function(x, na.rm = FALSE) {
-    if (na.rm) {
-      sum(!is.na(x))
-    } else {
-      length(x)
-    }
-  }
-
-  # This does the summary. For each group's data frame, return a vector with
-  # N, mean, and sd
-  datac <- ddply(data, groupvars,
-    .drop = .drop,
-    .fun = function(xx, col) {
-      c(
-        N = length2(xx[[col]], na.rm = na.rm),
-        mean = mean(xx[[col]], na.rm = na.rm),
-        sd = sd(xx[[col]], na.rm = na.rm)
-      )
-    },
-    measurevar
-  )
-
-  # Rename the "mean" column
-  datac <- rename(datac, c("mean" = measurevar))
-
-  datac$se <- datac$sd / sqrt(datac$N) # Calculate standard error of the mean
-
-  # Confidence interval multiplier for standard error
-  # Calculate t-statistic for confidence interval:
-  # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
-  ciMult <- qt(conf.interval / 2 + .5, datac$N - 1)
-  datac$ci <- datac$se * ciMult
-
-  return(datac)
-}
-```
 
 ```{r LOADING data, include=F }
 # rouen_doc <- read.xlsx("Extraction.xlsx", sheet = 1)
@@ -191,7 +137,6 @@ entry_mode <- rouen %>%
 We have `r unique_ids` **unique patients** and `r unique_stays` **unique hospital stays/emergency ward visits** so basically every patient consulted only once for dental problems, at the hospital, over the period of interest which is the calendar year 2021.
 
 ## Age & gender
-
 **Mean age** for both sex combined is `r mean_age` years (*sd* = `r round(sd(rouen$patage),2)`) while it's `r female_mean_age` (*sd* = `r round(sd(rouen$patage[rouen$patsex=="F"]),2)`) for women and `r male_mean_age` (*sd* = `r round(sd(rouen$patage[rouen$patsex=="M"]),2)`) for men.
 
 ```{r age distribution, echo = F}
@@ -208,33 +153,40 @@ rouen %>%
     y = "Frequency"
   )
 
-rouen %>%
-  select(patid, evtid, patage, patsex) %>%
-  distinct() %>%
-  ggplot(aes(x = patage)) +
-  geom_histogram(binwidth = 5, aes(fill = patsex), alpha = .8, position = "identity", boundary = .5) +
-  # geom_density(aes(y = ..density.. * (nrow(rouen) * 5), color = patsex), size = 1)+
-  scale_x_continuous(breaks = seq(0, 100, 5)) +
-  scale_y_continuous(breaks = seq(0, 100, 5)) +
+
+tab <- rouen %>%
+  select(patid, patage, patsex) %>%
+  distinct()
+
+ggplot(
+  data = tab,
+  aes(x = cut(patage, breaks = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100), 
+              labels = c("0-10", "11-20", "21-30", "31-40", "41-50", "51-60", "61-70", 
+                         "71-80", "81-90", "91-100")), 
+      fill = factor(patsex))) +
+  geom_bar(data = subset(tab, tab$patsex == "F"), position = "identity") +
+  geom_bar(data = subset(tab, tab$patsex == "M"), aes(y = after_stat(count) * (-1))) +
+  scale_y_continuous(breaks = seq(-1000, 1000, 50)) +
+  coord_flip() +
   labs(
-    title = "Age distribution by sex",
-    x = "Age",
-    y = "Frequency",
-    fill = "Sex"
+    title = "Patient's age distribution by sex",
+    fill = "Gender",
+    y = "Age",
+    x = "Count"
   )
 
-rouen %>% 
-    count(patsex) %>% 
-    mutate(prop = round(prop.table(n)*100,2)) %>% 
-    mutate(lab.ypos = cumsum(prop) - 0.5*prop) %>% 
 
-ggplot(aes(x = "", y = prop, fill = patsex)) +
+rouen %>%
+  count(patsex) %>%
+  mutate(prop = round(prop.table(n) * 100, 2)) %>%
+  mutate(lab.ypos = cumsum(prop) - 0.5 * prop) %>%
+  ggplot(aes(x = "", y = prop, fill = patsex)) +
   geom_bar(width = 1, stat = "identity", color = "white") +
-  coord_polar("y", start = 0)+
-  geom_text(aes(y = lab.ypos, label = paste(prop,"% ","(",n,")", sep="")), color = "black")+
-  #scale_fill_manual(values = mycols) +
-  theme_void()+
-    labs(fill = "Gender", title = "Gender representation")
+  coord_polar("y", start = 0) +
+  geom_text(aes(y = lab.ypos, label = paste(prop, "% ", "(", n, ")", sep = "")), color = "black") +
+  # scale_fill_manual(values = mycols) +
+  theme_void() +
+  labs(fill = "Gender", title = "Gender representation")
 ```
 
 ## Consultations
@@ -350,7 +302,7 @@ patients received **both oral and iv antibiotics** and `r length(patient_with_iv
 ```{r prescribed molecules, echo=F, warning=F, message=F}
 right_join(rouen[c("patid", "patage")], rouen_atb) %>%
   distinct() %>%
-  mutate(patage = cut(patage, breaks = seq(0,100,10), right = F)) %>%
+  mutate(patage = cut(patage, breaks = seq(0, 100, 10), right = F)) %>%
   group_by(patage) %>%
   summarise(
     group = patage,
@@ -363,11 +315,13 @@ right_join(rouen[c("patid", "patage")], rouen_atb) %>%
   ggplot(aes(x = group, y = mean_value)) +
   geom_errorbar(aes(ymin = mean_value - se, ymax = mean_value + se), width = .1) +
   geom_line() +
-  geom_point() + 
+  geom_point() +
   geom_text(aes(label = n), nudge_x = -.2) +
-  labs(title = "Average nb of atb prescriptions by age group",
-       x = "Age",
-       y = "Average nb of atb prescriptions")
+  labs(
+    title = "Average nb of atb prescriptions by age group",
+    x = "Age",
+    y = "Average nb of atb prescriptions"
+  )
 
 
 rouen_atb %>%
@@ -405,11 +359,12 @@ rouen_atb %>%
 # Acts
 rouen %>%
   group_by(acte_label) %>%
-  summarise(n = n(), n_distinct(patid)) %>%
+  summarise(n = n(), "Unique patients" = n_distinct(patid)) %>%
   arrange(desc(n)) %>%
   filter(str_detect(acte_label, "adiogra|rx|Rx")) %>%
   slice(-2) %>%
-  kable(col.names = c("Acte label", "n", "Unique patients")) %>%
+    mutate("rx on average" = round(n/`Unique patients`,2)) %>% 
+  kable(col.names = c("Acte label", "n", "Unique patients", "Rx on average")) %>%
   kable_minimal()
 ```
 
@@ -418,23 +373,28 @@ rouen %>%
 mod <- right_join(rouen[c("patid", "patage", "patsex", "pmsi_label")], rouen_atb) %>%
   distinct() %>%
   mutate(
+    pmsi_label = case_when(
+      str_detect(pmsi_label, "Abces|periodontite|parodonte") ~ "Abcès/periodontite",
+      str_detect(pmsi_label, "Carie") ~ "Carie",
+      TRUE ~ "Autre"
+    ),
     patsex = factor(patsex),
     pmsi_label = factor(pmsi_label), # Abces periapical mode de reference
-    patage = cut(patage, breaks = c(0, 18, 65, 100)) # Cutting age in 3 big categories
+    patage = cut(patage, breaks = c(0, 20, 60, 100)) # Cutting age in 3 big categories
   ) %>%
   glm(has_atb ~ patsex + patage + pmsi_label, data = .)
 
 # summary(mod)
 ```
 
-```{r glm results, echo=T}
+```{r glm results, echo=F}
 kable(cbind(
   round(exp(confint(mod)), 2),
   "OR" = round(exp(coef(mod)), 2),
-  "p-value" = round(coef(summary(mod))[, "Pr(>|t|)"], 4)
+  "p-value" = pval_format(coef(summary(mod))[, "Pr(>|t|)"])
 )) %>%
   kable_minimal() %>%
-  row_spec(5, bold = T)
+  row_spec(4, bold = T)
 ```
 
-Antibiotics prescription 30% less frequent in "abces pariapical avec fistule" relatively to "abces periapical".
+Patients 60+ yo are 25% more likely to receive an antibiotics prescription.
