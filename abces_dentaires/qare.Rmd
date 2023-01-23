@@ -270,7 +270,7 @@ qare %>%
 
 ```
 
-### 
+### Nb of antibiotics prescribed during a consultation
 ```{r echo=F}
 str_count(qare$is_antibiotic, "TRUE|True|true") %>% 
     table %>% 
