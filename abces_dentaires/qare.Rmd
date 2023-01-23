@@ -8,6 +8,7 @@ date: "2023-01-18"
 
 ```{r setup, include=FALSE}
 library(tidyverse)
+library(psych)
 library(stringr)
 library(openxlsx)
 library(lubridate)
@@ -102,7 +103,17 @@ qare %>%
 ```
 
 ### Durée moyenne des TC 
-`r round(mean(qare$consultation_duration,na.rm=T),2) %>% seconds_to_period()`
+```{r echo=F}
+describe(qare$consultation_duration, quant=c(.25,.75))[-c(1,2,7,11,12)] %>% 
+    data.frame %>% 
+    mutate(across(.cols = everything(), seconds_to_period),
+           across(.cols = everything(), round, 0)) %>% 
+    kable(col.names = c("Mean", "Standard deviation", "Median", "Trimmed mean", "Min", "Max", "Range","Standard error","25th percentile","75th percentile"),
+          caption = "Consultation duration") %>% 
+    kable_minimal()
+```
+"Trimmed mean" is calculated trimming 0.1% at both ends (removing top and lowest .1%, the outliers)
+
 
 ### Nombre moyen de TC déjà réalisées par ces patients 
 `r mean(qare$nb_consultations_completed, na.rm=T)`
@@ -148,6 +159,15 @@ ggplot(data = tab, aes(x = factor(patient_age_range), fill = patient_gender)) +
     x = "Age",
     fill = "Gender", title = "Patient's age distribution by sex"
   )
+```
+
+### ATCD cardiovasculaires
+```{r echo=F}
+qare$ticked_cardio_vascular %>% table %>% 
+    data.frame() %>% 
+    mutate("%" = round(proportions(Freq)*100,2)) %>% 
+    kable(col.names = c("","n","%"), caption = "ATCD cardiovasculaires oui/non") %>% 
+    kable_minimal
 ```
 
 # Physicians
@@ -215,8 +235,8 @@ qare %>%
   kable_minimal()
 ```
 
-
-# Antibiotics
+# Prescriptions
+### Prescribed antibiotics  overview
 ```{r echo=F}
 qare %>%
   separate_rows(c(molecule_filled, is_antibiotic, duration), sep = "\\|") %>%
@@ -247,7 +267,20 @@ qare %>%
   arrange(desc(n)) %>%
   kable() %>%
   kable_minimal()
+
 ```
+
+### 
+```{r echo=F}
+str_count(qare$is_antibiotic, "TRUE|True|true") %>% 
+    table %>% 
+    data.frame %>% 
+    mutate("%" = round(prop.table(Freq)*100,2)) %>% 
+    kable(col.names = c("Antibiotics prescribed","n","%"), caption = "Nb of antibiotics prescribed during a consultation") %>% 
+    kable_minimal()
+
+```
+
 
 
 ### Proportion d’antiinflammatoires prescrits (= toute molécule qui se termine en fene)
@@ -271,7 +304,7 @@ str_detect(qare$imagery_category, "(?i)radio") %>%
 ```
 
 # Logistic regression
-```{r echo=F, include = F}
+```{r echo=F, echo = F}
 # age des patients
 # sexe des patients
 # départements
@@ -280,28 +313,6 @@ str_detect(qare$imagery_category, "(?i)radio") %>%
 # catégorie de pathologie (carie, abcès/périodontite ou autre)
 # spécialité (med gé ou dentiste)
 # durée de la TC
-
-summary(glm(data = qare, has_antibiotic ~ patient_age_range))
-glm(data = qare, has_antibiotic ~ patient_gender) %>% summary()
-glm(data = qare, has_antibiotic ~ department_code) %>% summary()
-glm(data = qare, has_antibiotic ~ physician_gender) %>% summary()
-glm(data = qare, has_antibiotic ~ physician_age_range) %>% summary()
-
-qare <- qare %>%
-  mutate(cim10 = case_when(
-    str_detect(cim10, "Abcès|périodontite") ~ "Abcès/périodontite",
-    str_detect(cim10, "Carie") ~ "Carie",
-    TRUE ~ "Autre"
-  ))
-
-glm(data = qare, has_antibiotic ~ cim10) %>% summary()
-summary(glm(
-  data = qare, has_antibiotic ~ speciality,
-  subset = (str_detect(qare$speciality, "dentist|general-practician"))
-))
-
-
-
 qare <- qare %>%
   mutate(
     patient_age_range = factor(patient_age_range,
@@ -318,6 +329,36 @@ qare <- qare %>%
       )
     )
   )
+
+qare <- qare %>%
+  mutate(cim10 = case_when(
+    str_detect(cim10, "Abcès|périodontite") ~ "Abcès/périodontite",
+    str_detect(cim10, "Carie") ~ "Carie",
+    TRUE ~ "Autre"
+  ))
+
+mod1 = glm(data = qare, has_antibiotic ~ patient_age_range)
+mod2 = glm(data = qare, has_antibiotic ~ patient_gender) 
+mod3 = glm(data = qare, has_antibiotic ~ physician_gender) 
+mod4 = glm(data = qare, has_antibiotic ~ physician_age_range) 
+mod5 = glm(data = qare, has_antibiotic ~ cim10) 
+
+
+rbind(summary(mod1)$coefficients,
+summary(mod2)$coefficients,
+summary(mod3)$coefficients,
+summary(mod4)$coefficients,
+summary(mod5)$coefficients) %>% 
+    as.data.frame() %>% 
+    slice(-1,-4,-6,-8,-10) %>% 
+    mutate(`Pr(>|t|)` = pval_format(`Pr(>|t|)`)) %>% 
+    kable(col.names = c("Estimate","Std error","t-value","P-value"), caption = "Univariate models") %>% kable_minimal %>% 
+    row_spec(c(1, 2, 4, 6, 7), bold = T)
+
+
+
+
+
 ```
 
 
