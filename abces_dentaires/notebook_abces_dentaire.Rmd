@@ -1,5 +1,6 @@
 ---
 title: "Abces dentaires - Rouen"
+date: "2023-02-05"
 output:
   html_document:
     df_print: paged
@@ -388,13 +389,46 @@ mod <- right_join(rouen[c("patid", "patage", "patsex", "pmsi_label")], rouen_atb
 ```
 
 ```{r glm results, echo=F}
-kable(cbind(
+lab = c("Patient - Male", "Patient - age 21-60",
+                "Patient - age 61-100","CIM10 - Miscellanea", "CIM10 - Carie")
+
+cbind(
   round(exp(confint(mod)), 2),
   "OR" = round(exp(coef(mod)), 2),
-  "p-value" = pval_format(coef(summary(mod))[, "Pr(>|t|)"])
-)) %>%
-  kable_minimal() %>%
-  row_spec(4, bold = T)
+  "p-value" = pval_format(coef(summary(mod))[, "Pr(>|t|)"])) %>%
+    as.data.frame() %>% 
+    slice(-1) %>% 
+    `rownames<-`(lab) %>% 
+    kable() %>% 
+    kable_minimal() %>%
+    row_spec(3, bold = T)
+```
+
+
+```{r forest plot, echo=F}
+
+
+cbind(
+  round(exp(confint(mod)), 2),
+  "OR" = round(exp(coef(mod)), 2),
+  "p-value" = pval_format(coef(summary(mod))[, "Pr(>|t|)"])) %>%
+    as.data.frame() %>% 
+    slice(-1) %>% 
+    mutate("p-value" = pval_format(as.numeric(`p-value`)),
+         id = as.double(1:5)) %>% 
+    rename("min" = "2.5 %",
+           "max" = "97.5 %") %>%
+    mutate(across(min:OR,as.numeric)) %>% 
+    ggplot(aes(y=id, x=OR)) +
+    geom_point() +
+    scale_y_continuous(name = "", breaks=1:5, labels=lab)+
+    geom_errorbarh(aes(xmin=min, xmax=max), height = .1)+ 
+    labs()+
+    geom_vline(xintercept = 1, linetype = 2)+
+    theme_classic()+
+    scale_x_continuous(breaks = seq(0,3,0.1))
+
+
 ```
 
 Patients 60+ yo are 25% more likely to receive an antibiotics prescription.
