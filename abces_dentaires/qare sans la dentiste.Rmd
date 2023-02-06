@@ -1,9 +1,8 @@
 ---
-title: "Qare"
-output: 
-  html_document: 
-    toc: yes
-date: "2023-02-05"
+title: "Qare, sans la dentiste"
+author: "Francesco MONTI"
+date: "`r Sys.Date()`"
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -38,7 +37,12 @@ qare <- qare %>%
     patient_id = as.numeric(as.factor(patient_id)),
     physician_id = as.numeric(as.factor(physician_id))
   )
+
+# filtering out the pervasive dentist
+qare = qare %>% filter(physician_id!=39)
 ```
+
+
 
 # Teleconsultations
 ### nb total de TC étudiées? 
@@ -299,7 +303,7 @@ qare %>%
     Molecule = str_to_title(Molecule)
   ) %>%
   count(Molecule) %>%
-  mutate("%" = round(n/2174 * 100, 2)) %>%
+  mutate("%" = round(n/length(unique(qare$consultation_id)) * 100, 2)) %>%
   arrange(desc(n)) %>%
   kable(caption = "Frequency of antibiotics prescription by consultation") %>%
   kable_minimal()
@@ -355,7 +359,7 @@ qare <- qare %>%
       labels = c(
         "0-20", "0-20",
         "21-60", "21-60", "21-60", "21-60",
-        "61-100", "61-100", "61-100", "61-100"
+        "61-100", "61-100"
       )
     ),
     physician_age_range = factor(physician_age_range,
@@ -443,19 +447,17 @@ rbind(tab1, tab2, tab3, tab4, tab5, tab6) %>%
   )) %>%
   kable(col.names = c("2.5%", "97.5%", "OR", "p-value"), caption = "Univariate results") %>%
   kable_minimal() %>%
-  row_spec(c(1, 2, 4, 5, 6, 7, 8), bold = T)
+  row_spec(c(4, 6, 7, 8), bold = T)
 ```
 
 
 ```{r GLM RESULTS, echo=F}
 lab <- c(
-  "General practician", "Patient - Male", "Patient - age 21-60",
-  "Patient - age 61-100", "Physician - Male", "Physician - age 61-100",
-  "CIM10 - Miscellanea", "CIM10 - Carie"
+  "General practician", "Physician - Male", "CIM10 - Miscellanea", "CIM10 - Carie"
 )
 
 mod <- glm(
-  data = qare, has_antibiotic ~ speciality + patient_gender + patient_age_range + physician_gender + physician_age_range + cim10,
+  data = qare, has_antibiotic ~ speciality + physician_gender + cim10,
   subset = (str_detect(qare$speciality, "dentist|general-practician"))
 )
 
@@ -468,8 +470,8 @@ cbind(round(exp(confint(mod)), 2),
   `rownames<-`(lab) %>%
   mutate("p.value" = pval_format(p.value)) %>%
   kable(col.names = c("2.5%", "97.5%", "OR", "p-value")) %>%
-  kable_minimal() %>%
-  row_spec(c(3, 4, 7, 8), bold = T)
+  kable_minimal() %>% 
+  row_spec(c(4,3), bold = T)
 ```
 
 
@@ -481,7 +483,7 @@ cbind(round(exp(confint(mod)), 2),
   as.data.frame() %>%
   mutate(
     "p-value" = pval_format(`p-value`),
-    id = as.double(1:9)
+    id = as.double(1:5)
   ) %>%
   rename(
     "min" = "2.5 %",
@@ -490,7 +492,7 @@ cbind(round(exp(confint(mod)), 2),
   slice(-1) %>%
   ggplot(aes(y = id, x = OR)) +
   geom_point() +
-  scale_y_continuous(name = "", breaks = 2:9, labels = lab) +
+  scale_y_continuous(name = "", breaks = 2:5, labels = lab) +
   geom_errorbarh(aes(xmin = min, xmax = max), height = .1) +
   labs() +
   geom_vline(xintercept = 1, linetype = 2) +
