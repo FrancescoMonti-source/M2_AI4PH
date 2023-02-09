@@ -298,7 +298,8 @@ patient_with_iv <- as.vector(na.omit(rouen_atb$patid[rouen_atb$voie == "iv"]))
 Among `r unique_ids` patients, `r patient_with_atb` **received an antibiotic** prescription accounting for a total of `r total_atb_prescribed` **antibiotics prescribed**: `r round(total_atb_prescribed/unique_ids,2)` on **average**, considering the whole sample, `r round((total_atb_prescribed-length(patient_with_iv))/patient_with_atb,2)` if we consider only those who received them.
 
 According to the dataset, `r nrow(rouen_atb[rouen_atb$patid %in% patient_with_iv & rouen_atb$voie=="os",])`
-patients received **both oral and iv antibiotics** and `r length(patient_with_iv)-nrow(rouen_atb[rouen_atb$patid %in% patient_with_iv & rouen_atb$voie=="os",])` patients **only received oral antibiotics**.
+patients received **both oral and iv antibiotics** and `r length(patient_with_iv)-nrow(rouen_atb[rouen_atb$patid %in% patient_with_iv & rouen_atb$voie=="os",])` patients **only received iv antibiotics**.
+99 patients only received os ATBs.
 
 ```{r prescribed molecules, echo=F, warning=F, message=F}
 right_join(rouen[c("patid", "patage")], rouen_atb) %>%
