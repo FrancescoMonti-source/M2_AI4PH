@@ -181,11 +181,12 @@ qare$ticked_cardio_vascular %>%
 
 # Physicians
 ### Nombre de prats ayant réalisé les TC
-`r length(unique(qare$physician_id))`
+`r n_distinct(qare$physician_id)`
 
 ### Réparition par genre homme ou femme
 ```{r echo=F}
-qare %>%
+qare %>% select(physician_id,physician_gender) %>% 
+  distinct() %>% 
   count(physician_gender) %>%
   mutate("%" = round(proportions(n) * 100, 2)) %>%
   slice(-3) %>%
@@ -226,11 +227,22 @@ ggplot(data = tab, aes(x = factor(physician_age_range), fill = physician_gender)
 
 ### Répartition par spécialité (dentiste? médecin généraliste?)
 ```{r echo=F}
+qare %>% select(physician_id,speciality) %>% 
+  distinct() %>% 
+  count(speciality) %>%
+  mutate("%" = round(proportions(n) * 100, 2)) %>%
+  slice(-3) %>%
+  kable(caption = "Repartition specialistes") %>%
+  kable_minimal()
+```
+
+### Répartition volume d'activité
+```{r echo=F}
 qare %>%
   count(speciality) %>%
   arrange(desc(n)) %>%
   mutate("%" = round(proportions(n) * 100, 2)) %>%
-  kable() %>%
+  kable(caption = "Repartition volume activité") %>%
   kable_minimal()
 ```
 
