@@ -304,7 +304,16 @@ patient_with_atb <- rouen_atb %>%
   distinct() %>%
   nrow()
 
+# Patient qui ont recu IV 
 patient_with_iv <- as.vector(na.omit(rouen_atb$patid[rouen_atb$voie == "iv"]))
+
+# Both os and iv
+rouen_atb %>% filter(patid %in% patient_with_iv) %>% filter(voie=="os") %$% n_distinct(patid)
+
+# ATBs par patient
+rouen_atb %>% select(patid,molecule) %>% filter(!is.na(molecule)) %>% group_by(patid) %>% summarise(n=n()) %>% arrange(desc(n)) %>% print(n=30)
+
+
 ```
 
 Among `r unique_ids` patients, `r patient_with_atb` **received an antibiotic** prescription accounting for a total of `r total_atb_prescribed` **antibiotics prescribed**: `r round(total_atb_prescribed/unique_ids,2)` on **average**, considering the whole sample, `r round((total_atb_prescribed-length(patient_with_iv))/patient_with_atb,2)` if we consider only those who received them.
