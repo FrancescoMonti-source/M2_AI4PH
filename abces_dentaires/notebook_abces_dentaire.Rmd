@@ -159,7 +159,7 @@ library(ggplot2)
 rouen %>%
   select(patid, evtid, patage, patsex) %>%
   distinct() %>%
-  ggplot(aes(x = patage)) +
+  ggplot(aes(x = as.numeric(patage))) +
   geom_histogram(binwidth = 5, color = "white", boundary = 0.5) +
   scale_x_continuous(breaks = seq(0, 100, 5)) +
   scale_y_continuous(breaks = seq(0, 100, 10)) +
@@ -171,25 +171,21 @@ rouen %>%
 
 tab <- rouen %>%
   select(patid, patage, patsex) %>%
-  distinct()
+  distinct() %>% mutate(as.numeric(patage))
 
-ggplot(tab, aes(x = cut(patage, breaks = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100), 
-                    labels = c("0-10", "11-20", "21-30", "31-40", "41-50", "51-60", "61-70", 
-                               "71-80", "81-90", "91-100")), 
-               fill = factor(patsex))) +
-  geom_col(position = "identity") +
-  scale_y_continuous(breaks = seq(-1000, 1000, 50)) +
-  coord_flip() +
-  labs(
-    title = "Patient's age distribution by sex",
-    fill = "Gender",
-    y = "Age",
-    x = "Count"
-  ) +
-  theme(
-    legend.position = "bottom",
-    plot.title = element_text(hjust = 0.5)
-  )
+ggplot(data = tab, aes(x = cut(as.numeric(patage), breaks = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100), 
+                               labels = c("0-10", "11-20", "21-30", "31-40", "41-50", "51-60", "61-70", 
+                                          "71-80", "81-90", "91-100")), 
+                       fill = factor(patsex))) +
+    geom_bar(data = subset(tab, tab$patsex == "F"), position = "identity") +
+    geom_bar(data = subset(tab, tab$patsex == "M"), aes(y = after_stat(count) * (-1))) +
+    scale_y_continuous(breaks = seq(-1000, 1000, 5)) +
+    coord_flip() +
+    labs(
+        y = "Count",
+        x = "Age",
+        fill = "Gender", title = "Patient's age distribution by sex"
+    )
 
 
 
