@@ -34,6 +34,7 @@ rouen_concepts_long <- read.xlsx("Extraction.xlsx", sheet = 6)
 rouen_concepts_wide <- read.xlsx("Extraction.xlsx", sheet = 7)
 dictionnaire <- read.xlsx("Dictionnaire mode entree sortie.xlsx", sheet = 1)
 rouen_nomenclature_ccam <- read.xlsx("Extraction.xlsx", sheet = 9)
+has_acvd = read.xlsx("has_acvd.xlsx", sheet = 1)
 ```
 
 ```{r dm PMSI, include=F}
@@ -112,10 +113,16 @@ rouen <- rouen %>%
 # Remove duplicates
 rouen <- distinct(rouen)
 
+
+
+
 ```
 
 # Descriptive analysis
 ```{r include=F}
+# ATCD cardio
+rouen$acvd = ifelse(rouen$patid %in% has_acvd$PATID,1,0)
+
 rouen <- rouen %>%
   mutate(sejdur = as.numeric(sejdur))
 
