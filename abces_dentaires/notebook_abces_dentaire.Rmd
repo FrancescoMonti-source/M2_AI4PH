@@ -32,7 +32,7 @@ rouen_codes_pmsi <- read.xlsx("Extraction.xlsx", sheet = 4)
 rouen_codes_ccam <- read.xlsx("Extraction.xlsx", sheet = 5)
 rouen_concepts_long <- read.xlsx("Extraction.xlsx", sheet = 6)
 rouen_concepts_wide <- read.xlsx("Extraction.xlsx", sheet = 7)
-dictionnaire <- read.xlsx("Extraction.xlsx", sheet = 8, rows = 31:52, cols = 1:2)
+dictionnaire <- read.xlsx("Dictionnaire mode entree sortie.xlsx", sheet = 1)
 rouen_nomenclature_ccam <- read.xlsx("Extraction.xlsx", sheet = 9)
 ```
 
@@ -84,10 +84,8 @@ dictionnaire$code <- as.character(dictionnaire$code)
 
 # Join labels to the main table
 rouen <- rouen_sej_pmsi %>%
-  left_join(dictionnaire, by = c("modeent" = "code")) %>%
-  mutate(modeent_label = label) %>%
-  left_join(dictionnaire, by = c("modesort" = "code")) %>%
-  mutate(modesort_label = label) 
+  left_join(dictionnaire[c("code","modeent_label")], by = c("modeent" = "code")) %>%
+  left_join(dictionnaire[c("code","modesort_label")], by = c("modesort" = "code"))
 
 # Replace "retour du domicile" with "retour au domicile"
 rouen$modesort_label <- case_when(
