@@ -394,11 +394,11 @@ mod2 <- glm(data = qare, has_antibiotic ~ patient_gender)
 mod3 <- glm(data = qare, has_antibiotic ~ physician_gender)
 mod4 <- glm(data = qare, has_antibiotic ~ physician_age_range)
 mod5 <- glm(data = qare, has_antibiotic ~ cim10)
-mod6 <- glm(
-  data = qare, has_antibiotic ~ speciality,
-  subset = (str_detect(qare$speciality, "dentist|general-practician"))
-)
-
+mod6 <- glm(data = qare, has_antibiotic ~ speciality,
+            subset = (str_detect(qare$speciality,
+                                 "dentist|general-practician")
+                      )
+            )
 
 rbind(
   summary(mod1)$coefficients,
@@ -416,7 +416,7 @@ rbind(
     caption = "Univariate models"
   ) %>%
   kable_minimal() %>%
-  row_spec(c(1, 2, 4, 6, 7, 8), bold = T)
+  row_spec(c(4, 6, 7, 8), bold = T)
 
 
 
