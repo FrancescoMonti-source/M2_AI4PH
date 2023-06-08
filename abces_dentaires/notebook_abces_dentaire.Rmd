@@ -32,7 +32,10 @@ rouen_codes_pmsi <- read.xlsx("Extraction.xlsx", sheet = 4)
 rouen_codes_ccam <- read.xlsx("Extraction.xlsx", sheet = 5)
 rouen_concepts_long <- read.xlsx("Extraction.xlsx", sheet = 6)
 rouen_concepts_wide <- read.xlsx("Extraction.xlsx", sheet = 7)
+
 dictionnaire <- read.xlsx("Dictionnaire mode entree sortie.xlsx", sheet = 1)
+dictionnaire$code <- as.character(dictionnaire$code)
+
 rouen_nomenclature_ccam <- read.xlsx("Extraction.xlsx", sheet = 9)
 has_acvd = read.xlsx("has_acvd.xlsx", sheet = 1)
 ```
@@ -70,7 +73,7 @@ rouen_codes_pmsi$pmsi <- str_remove_all(rouen_codes_pmsi$pmsi, "DS\\'|DP\\'|DD\\
 
 ```{r dm CCAM, include = FALSE}
 rouen_codes_ccam <-
-  left_join(rouen_codes_ccam, rouen_nomenclature_ccam[c(1, 2)], by = c("CODEACTE" = "Code"))
+  left_join(rouen_codes_ccam, rouen_nomenclature_ccam[c(1, 2)], by = c("codeacte" = "Code"))
 # names to lower case
 names(rouen_codes_ccam) <- tolower(names(rouen_codes_ccam))
 ```
@@ -79,20 +82,10 @@ names(rouen_codes_ccam) <- tolower(names(rouen_codes_ccam))
 # Convert column names to lowercase
 colnames(rouen_sej_pmsi) <- tolower(colnames(rouen_sej_pmsi))
 
-# Prepare dictionary for join
-colnames(dictionnaire) <- c("code", "label")
-dictionnaire$code <- as.character(dictionnaire$code)
-
 # Join labels to the main table
 rouen <- rouen_sej_pmsi %>%
   left_join(dictionnaire[c("code","modeent_label")], by = c("modeent" = "code")) %>%
   left_join(dictionnaire[c("code","modesort_label")], by = c("modesort" = "code"))
-
-# Replace "retour du domicile" with "retour au domicile"
-rouen$modesort_label <- case_when(
-  rouen$modesort_label == "Du domicile" ~ "Au domicile",
-  TRUE ~ rouen$modesort_label
-)
 
 ```
 
