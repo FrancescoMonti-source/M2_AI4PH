@@ -37,7 +37,7 @@ dictionnaire <- read.xlsx("Dictionnaire mode entree sortie.xlsx", sheet = 1)
 dictionnaire$code <- as.character(dictionnaire$code)
 
 rouen_nomenclature_ccam <- read.xlsx("Extraction.xlsx", sheet = 9)
-has_acvd = read.xlsx("has_acvd.xlsx", sheet = 1)
+has_acvd <- read.xlsx("has_acvd.xlsx", sheet = 1)
 ```
 
 ```{r dm PMSI, include=F}
@@ -49,31 +49,31 @@ rouen_codes_pmsi <- rouen_codes_pmsi %>%
   pivot_longer(cols = starts_with("PMSI"), values_to = "pmsi") %>%
   arrange(EVTID, pmsi, .by_group = TRUE) %>%
   select(-name) %>%
-  distinct(.keep_all = TRUE) %>%
-  group_by(PATID, EVTID) %>%
-  summarise(pmsi = str_flatten(pmsi, collapse = ",")) %>%
-  mutate(pmsi = str_remove(pmsi, "\\,$|^\\,")) %>%
-  mutate(pmsi_label = case_when(
-    str_detect(pmsi, "K047") ~ "Abces periapical",
-    str_detect(pmsi, "K046") ~ "Abces periapical avec fistule",
-    str_detect(pmsi, "K052") ~ "Periodontite aigue",
-    str_detect(pmsi, "K053") ~ "Periodondite",
-    str_detect(pmsi, "K02.") ~ "Carie",
-    str_detect(pmsi, "K088") ~ "Autres affections precisees des dents et du parodonte",
-    str_detect(pmsi, "K089") ~ "Affection des dents et du parodonte, sans precision",
-    str_detect(pmsi, "K040|K045|K048") ~ "Maladies de la pulpe et des tissu périapicaux, autres et sans précision",
-    str_detect(pmsi, "K050|K056") ~ "Maladie périodontale, sans précision",
-    str_detect(pmsi, "K068") ~ "Affection de la gencive et de la crête alvéolaire édentée, sans précision"
-  )) %>%
-  mutate_all(tolower)
-
-# Remove labels to make codes more readable
-rouen_codes_pmsi$pmsi <- str_remove_all(rouen_codes_pmsi$pmsi, "DS\\'|DP\\'|DD\\'")
+  mutate(
+    pmsi = na_if(pmsi, ""),
+    pmsi = str_remove_all(pmsi, "DS\\'|DP\\'|DD\\'")
+  ) %>%
+  distinct() %>%
+  filter(!is.na(pmsi)) %>%
+  mutate(
+    pmsi_label = case_when(
+      str_detect(pmsi, "K047") ~ "Abces periapical",
+      str_detect(pmsi, "K046") ~ "Abces periapical avec fistule",
+      str_detect(pmsi, "K052") ~ "Periodontite aigue",
+      str_detect(pmsi, "K053") ~ "Periodondite",
+      str_detect(pmsi, "K02.") ~ "Carie",
+      str_detect(pmsi, "K088") ~ "Autres affections precisees des dents et du parodonte",
+      str_detect(pmsi, "K089") ~ "Affection des dents et du parodonte, sans precision",
+      str_detect(pmsi, "K040|K045|K048") ~ "Maladies de la pulpe et des tissu périapicaux, autres et sans précision",
+      str_detect(pmsi, "K050|K056") ~ "Maladie périodontale, sans précision",
+      str_detect(pmsi, "K068") ~ "Affection de la gencive et de la crête alvéolaire édentée, sans précision"
+    )
+  )
 ```
 
 ```{r dm CCAM, include = FALSE}
 rouen_codes_ccam <-
-  left_join(rouen_codes_ccam, rouen_nomenclature_ccam[c(1, 2)], by = c("codeacte" = "Code"))
+  left_join(rouen_codes_ccam, rouen_nomenclature_ccam[c(1, 2)], by = c("CODEACTE" = "Code"))
 # names to lower case
 names(rouen_codes_ccam) <- tolower(names(rouen_codes_ccam))
 ```
@@ -84,9 +84,8 @@ colnames(rouen_sej_pmsi) <- tolower(colnames(rouen_sej_pmsi))
 
 # Join labels to the main table
 rouen <- rouen_sej_pmsi %>%
-  left_join(dictionnaire[c("code","modeent_label")], by = c("modeent" = "code")) %>%
-  left_join(dictionnaire[c("code","modesort_label")], by = c("modesort" = "code"))
-
+  left_join(dictionnaire[c("code", "modeent_label")], by = c("modeent" = "code")) %>%
+  left_join(dictionnaire[c("code", "modesort_label")], by = c("modesort" = "code"))
 ```
 
 ```{r dm joining tables, include = F}
@@ -99,22 +98,17 @@ rouen <- rouen %>%
 
 # Join ccam acts table
 rouen <- rouen %>%
-  left_join(select(rouen_codes_ccam, patid, evtid, codeacte, texte),
-            by = c("patid", "evtid")) %>%
-  rename(acte = codeacte, acte_label = texte)
-
-# Remove duplicates
-rouen <- distinct(rouen)
-
-
-
-
+  left_join(rouen_codes_ccam[c("patid", "evtid", "codeacte", "texte")],
+    by = c("patid", "evtid")
+  ) %>%
+  rename(acte = codeacte, acte_label = texte) %>%
+  distinct()
 ```
 
 # Descriptive analysis
 ```{r include=F}
 # ATCD cardio
-rouen$acvd = ifelse(rouen$patid %in% has_acvd$PATID,1,0)
+rouen$acvd <- ifelse(rouen$patid %in% has_acvd$PATID, 1, 0)
 
 rouen <- rouen %>%
   mutate(sejdur = as.numeric(sejdur))
@@ -171,21 +165,28 @@ rouen %>%
 
 tab <- rouen %>%
   select(patid, patage, patsex) %>%
-  distinct() %>% mutate(as.numeric(patage))
+  distinct() %>%
+  mutate(as.numeric(patage))
 
-ggplot(data = tab, aes(x = cut(as.numeric(patage), breaks = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100), 
-                               labels = c("0-10", "11-20", "21-30", "31-40", "41-50", "51-60", "61-70", 
-                                          "71-80", "81-90", "91-100")), 
-                       fill = factor(patsex))) +
-    geom_bar(data = subset(tab, tab$patsex == "F"), position = "identity") +
-    geom_bar(data = subset(tab, tab$patsex == "M"), aes(y = after_stat(count) * (-1))) +
-    scale_y_continuous(breaks = seq(-1000, 1000, 5)) +
-    coord_flip() +
-    labs(
-        y = "Count",
-        x = "Age",
-        fill = "Gender", title = "Patient's age distribution by sex"
+ggplot(data = tab, aes(
+  x = cut(as.numeric(patage),
+    breaks = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100),
+    labels = c(
+      "0-10", "11-20", "21-30", "31-40", "41-50", "51-60", "61-70",
+      "71-80", "81-90", "91-100"
     )
+  ),
+  fill = factor(patsex)
+)) +
+  geom_bar(data = subset(tab, tab$patsex == "F"), position = "identity") +
+  geom_bar(data = subset(tab, tab$patsex == "M"), aes(y = after_stat(count) * (-1))) +
+  scale_y_continuous(breaks = seq(-1000, 1000, 5)) +
+  coord_flip() +
+  labs(
+    y = "Count",
+    x = "Age",
+    fill = "Gender", title = "Patient's age distribution by sex"
+  )
 
 
 
@@ -200,7 +201,6 @@ rouen %>%
   # scale_fill_manual(values = mycols) +
   theme_void() +
   labs(fill = "Gender", title = "Gender representation")
-
 ```
 
 ## Consultations
@@ -226,6 +226,7 @@ rouen %>%
 # Horizontal histogram
 rouen %>%
   select(evtid, pmsi_label) %>%
+    filter(!is.na(pmsi_label)) %>% 
   distinct() %>%
   count(pmsi_label) %>%
   ggplot(aes(
@@ -305,16 +306,22 @@ patient_with_atb <- rouen_atb %>%
   distinct() %>%
   nrow()
 
-# Patient qui ont recu IV 
+# Patient qui ont recu IV
 patient_with_iv <- as.vector(na.omit(rouen_atb$patid[rouen_atb$voie == "iv"]))
 
 # Both os and iv
-rouen_atb %>% filter(patid %in% patient_with_iv) %>% filter(voie=="os") %$% n_distinct(patid)
+rouen_atb %>%
+  filter(patid %in% patient_with_iv) %>%
+  filter(voie == "os") %$% n_distinct(patid)
 
 # ATBs par patient
-rouen_atb %>% select(patid,molecule) %>% filter(!is.na(molecule)) %>% group_by(patid) %>% summarise(n=n()) %>% arrange(desc(n)) %>% print(n=30)
-
-
+rouen_atb %>%
+  select(patid, molecule) %>%
+  filter(!is.na(molecule)) %>%
+  group_by(patid) %>%
+  summarise(n = n()) %>%
+  arrange(desc(n)) %>%
+  print(n = 30)
 ```
 
 Among `r unique_ids` patients, `r patient_with_atb` **received an antibiotic** prescription accounting for a total of `r total_atb_prescribed` **antibiotics prescribed**: `r round(total_atb_prescribed/unique_ids,2)` on **average**, considering the whole sample, `r round((total_atb_prescribed-length(patient_with_iv))/patient_with_atb,2)` if we consider only those who received them.
@@ -326,7 +333,7 @@ patients received **both oral and iv antibiotics** and `r length(patient_with_iv
 ```{r prescribed molecules, echo=F, warning=F, message=F}
 right_join(rouen[c("patid", "patage")], rouen_atb) %>%
   distinct() %>%
-  mutate(patage = cut(patage, breaks = seq(0, 100, 10), right = F)) %>%
+  mutate(patage = cut(as.numeric(patage), breaks = seq(0, 100, 10), right = F)) %>%
   group_by(patage) %>%
   summarise(
     group = patage,
@@ -340,7 +347,7 @@ right_join(rouen[c("patid", "patage")], rouen_atb) %>%
   geom_errorbar(aes(ymin = mean_value - se, ymax = mean_value + se), width = .1) +
   geom_line() +
   geom_point() +
-  geom_text(aes(label = n), nudge_x = -.2) +
+  geom_text(aes(label = paste("N=", n, sep = "")), nudge_x = -.4) +
   labs(
     title = "Average nb of atb prescriptions by age group",
     x = "Age",
@@ -387,7 +394,7 @@ rouen %>%
   arrange(desc(n)) %>%
   filter(str_detect(acte_label, "adiogra|rx|Rx")) %>%
   slice(-2) %>%
-    mutate("rx on average" = round(n/`Unique patients`,2)) %>% 
+  mutate("rx on average" = round(n / `Unique patients`, 2)) %>%
   kable(col.names = c("Acte label", "n", "Unique patients", "Rx on average")) %>%
   kable_minimal()
 ```
@@ -412,46 +419,50 @@ mod <- right_join(rouen[c("patid", "patage", "patsex", "pmsi_label")], rouen_atb
 ```
 
 ```{r glm results, echo=F}
-lab = c("Patient - Male", "Patient - age 21-60",
-                "Patient - age 61-100","CIM10 - Miscellanea", "CIM10 - Carie")
+lab <- c(
+  "Patient - Male", "Patient - age 21-60",
+  "Patient - age 61-100", "CIM10 - Miscellanea", "CIM10 - Carie"
+)
 
 cbind(
   round(exp(confint(mod)), 2),
   "OR" = round(exp(coef(mod)), 2),
-  "p-value" = pval_format(coef(summary(mod))[, "Pr(>|t|)"])) %>%
-    as.data.frame() %>% 
-    slice(-1) %>% 
-    `rownames<-`(lab) %>% 
-    kable() %>% 
-    kable_minimal() %>%
-    row_spec(3, bold = T)
+  "p-value" = pval_format(coef(summary(mod))[, "Pr(>|t|)"])
+) %>%
+  as.data.frame() %>%
+  slice(-1) %>%
+  `rownames<-`(lab) %>%
+  kable() %>%
+  kable_minimal() %>%
+  row_spec(3, bold = T)
 ```
 
 
 ```{r forest plot, echo=F}
-
-
 cbind(
   round(exp(confint(mod)), 2),
   "OR" = round(exp(coef(mod)), 2),
-  "p-value" = pval_format(coef(summary(mod))[, "Pr(>|t|)"])) %>%
-    as.data.frame() %>% 
-    slice(-1) %>% 
-    mutate("p-value" = pval_format(as.numeric(`p-value`)),
-         id = as.double(1:5)) %>% 
-    rename("min" = "2.5 %",
-           "max" = "97.5 %") %>%
-    mutate(across(min:OR,as.numeric)) %>% 
-    ggplot(aes(y=id, x=OR)) +
-    geom_point() +
-    scale_y_continuous(name = "", breaks=1:5, labels=lab)+
-    geom_errorbarh(aes(xmin=min, xmax=max), height = .1)+ 
-    labs()+
-    geom_vline(xintercept = 1, linetype = 2)+
-    theme_classic()+
-    scale_x_continuous(breaks = seq(0,3,0.1))
-
-
+  "p-value" = pval_format(coef(summary(mod))[, "Pr(>|t|)"])
+) %>%
+  as.data.frame() %>%
+  slice(-1) %>%
+  mutate(
+    "p-value" = pval_format(as.numeric(`p-value`)),
+    id = as.double(1:5)
+  ) %>%
+  rename(
+    "min" = "2.5 %",
+    "max" = "97.5 %"
+  ) %>%
+  mutate(across(min:OR, as.numeric)) %>%
+  ggplot(aes(y = id, x = OR)) +
+  geom_point() +
+  scale_y_continuous(name = "", breaks = 1:5, labels = lab) +
+  geom_errorbarh(aes(xmin = min, xmax = max), height = .1) +
+  labs() +
+  geom_vline(xintercept = 1, linetype = 2) +
+  theme_classic() +
+  scale_x_continuous(breaks = seq(0, 3, 0.1))
 ```
 
 Patients 60+ yo are 25% more likely to receive an antibiotics prescription.
