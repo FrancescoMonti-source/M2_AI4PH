@@ -184,10 +184,11 @@ rouen %>%
   ggplot(aes(x = "", y = prop, fill = patsex)) +
   geom_bar(width = 1, stat = "identity", color = "white") +
   coord_polar("y", start = 0) +
-  geom_text(aes(y = lab.ypos, label = paste(prop, "% ", "(", n, ")", sep = "")), color = "black") +
+  geom_text(aes(y = lab.ypos, label = paste(prop, "% ", "(", n, ")", sep = "")), color = "black", position = position_stack(vjust = 0.5)) +
   # scale_fill_manual(values = mycols) +
   theme_void() +
   labs(fill = "Gender", title = "Gender representation")
+
 ```
 
 ## Consultations
