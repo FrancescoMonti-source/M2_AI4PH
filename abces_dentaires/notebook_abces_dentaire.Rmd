@@ -410,8 +410,8 @@ mod <- right_join(rouen[c("patid", "patage", "patsex", "pmsi_label")], rouen_atb
       TRUE ~ "Autre"
     ),
     patsex = factor(patsex),
-    pmsi_label = factor(pmsi_label), # Abces periapical mode de reference
-    patage = cut(patage, breaks = c(0, 20, 60, 100)) # Cutting age in 3 big categories
+    pmsi_label = relevel(factor(pmsi_label), ref = "Autre"), # Abces periapical mode de reference
+    patage = cut(as.numeric(patage), breaks = c(0, 20, 60, 100)), # Cutting age in 3 big categories
   ) %>%
   glm(has_atb ~ patsex + patage + pmsi_label, data = .)
 
@@ -421,7 +421,7 @@ mod <- right_join(rouen[c("patid", "patage", "patsex", "pmsi_label")], rouen_atb
 ```{r glm results, echo=F}
 lab <- c(
   "Patient - Male", "Patient - age 21-60",
-  "Patient - age 61-100", "CIM10 - Miscellanea", "CIM10 - Carie"
+  "Patient - age 61-100", "CIM10 - Abcès/periodontite", "CIM10 - Carie"
 )
 
 cbind(
