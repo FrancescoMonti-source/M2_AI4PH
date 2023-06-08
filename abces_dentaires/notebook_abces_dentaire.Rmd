@@ -32,49 +32,40 @@ rouen_codes_pmsi <- read.xlsx("Extraction.xlsx", sheet = 4)
 rouen_codes_ccam <- read.xlsx("Extraction.xlsx", sheet = 5)
 rouen_concepts_long <- read.xlsx("Extraction.xlsx", sheet = 6)
 rouen_concepts_wide <- read.xlsx("Extraction.xlsx", sheet = 7)
-dictionnaire <- read.xlsx("Extraction.xlsx", sheet = 8, rows = 31:52, cols = 1:2)
+dictionnaire <- read.xlsx("Dictionnaire mode entree sortie.xlsx", sheet = 1)
 rouen_nomenclature_ccam <- read.xlsx("Extraction.xlsx", sheet = 9)
+has_acvd = read.xlsx("has_acvd.xlsx", sheet = 1)
 ```
 
 ```{r dm PMSI, include=F}
-# Properly formatting to wide format
-rouen_codes_pmsi <-
-  rouen_codes_pmsi %>%
-  group_by(PATID, EVTID) %>%
-  summarise(PMSI = str_flatten(PMSI))
-# Widening
 rouen_codes_pmsi <- rouen_codes_pmsi %>%
-  mutate(PMSI = str_split_fixed(PMSI, "\\s", n = 50)) %>%
-  apply(2, str_remove, "\\:.+$") %>%
-  data.frame()
-
-# Pivoting back to long format to comfortably erase duplicates then back to wide format
-rouen_codes_pmsi <-
-  pivot_longer(rouen_codes_pmsi, cols = 3:52, values_to = "pmsi") %>%
-  arrange(EVTID, pmsi, by_group = T) %>%
-  select(-name) %>% # dropping "name" column
-  distinct() %>% # dropping duplicates
+  group_by(PATID, EVTID) %>%
+  summarise(PMSI = str_flatten(PMSI)) %>%
+  separate(PMSI, into = paste0("PMSI", 1:50), sep = "\\s", fill = "right") %>%
+  mutate(across(starts_with("PMSI"), ~ str_remove(., "\\:.+$"))) %>%
+  pivot_longer(cols = starts_with("PMSI"), values_to = "pmsi") %>%
+  arrange(EVTID, pmsi, .by_group = TRUE) %>%
+  select(-name) %>%
+  distinct(.keep_all = TRUE) %>%
   group_by(PATID, EVTID) %>%
   summarise(pmsi = str_flatten(pmsi, collapse = ",")) %>%
-  mutate(pmsi = str_remove(pmsi, "\\,$|^\\,"))
-# Adding PMSI labels
-rouen_codes_pmsi$pmsi_label <- case_when(
-  str_detect(rouen_codes_pmsi$pmsi, "K047") ~ "Abces periapical",
-  str_detect(rouen_codes_pmsi$pmsi, "K046") ~ "Abces periapical avec fistule",
-  str_detect(rouen_codes_pmsi$pmsi, "K052") ~ "Periodontite aigue",
-  str_detect(rouen_codes_pmsi$pmsi, "K053") ~ "Periodondite",
-  str_detect(rouen_codes_pmsi$pmsi, "K02.") ~ "Carie",
-  str_detect(rouen_codes_pmsi$pmsi, "K088") ~ "Autres affections precisees des dents et du parodonte",
-  str_detect(rouen_codes_pmsi$pmsi, "K089") ~ "Affection des dents et du parodonte, sans precision",
-  str_detect(rouen_codes_pmsi$pmsi, "K040|K045|K048") ~ "Maladies de la pulpe et des tissu périapicaux, autres et sans précision",
-  str_detect(rouen_codes_pmsi$pmsi, "K050|K056") ~ "Maladie périodontale, sans précision",
-  str_detect(rouen_codes_pmsi$pmsi, "K068") ~ "Affection de la gencive et de la crête alvéolaire édentée, sans précision"
-)
-# names to lower case
-names(rouen_codes_pmsi) <- tolower(names(rouen_codes_pmsi))
+  mutate(pmsi = str_remove(pmsi, "\\,$|^\\,")) %>%
+  mutate(pmsi_label = case_when(
+    str_detect(pmsi, "K047") ~ "Abces periapical",
+    str_detect(pmsi, "K046") ~ "Abces periapical avec fistule",
+    str_detect(pmsi, "K052") ~ "Periodontite aigue",
+    str_detect(pmsi, "K053") ~ "Periodondite",
+    str_detect(pmsi, "K02.") ~ "Carie",
+    str_detect(pmsi, "K088") ~ "Autres affections precisees des dents et du parodonte",
+    str_detect(pmsi, "K089") ~ "Affection des dents et du parodonte, sans precision",
+    str_detect(pmsi, "K040|K045|K048") ~ "Maladies de la pulpe et des tissu périapicaux, autres et sans précision",
+    str_detect(pmsi, "K050|K056") ~ "Maladie périodontale, sans précision",
+    str_detect(pmsi, "K068") ~ "Affection de la gencive et de la crête alvéolaire édentée, sans précision"
+  )) %>%
+  mutate_all(tolower)
 
-# Now that DPs always precede DS, we can remove labels to make codes more readable
-rouen_codes_pmsi$pmsi <- rouen_codes_pmsi$pmsi %>% str_remove_all("DS\\'|DP\\'|DD\\'")
+# Remove labels to make codes more readable
+rouen_codes_pmsi$pmsi <- str_remove_all(rouen_codes_pmsi$pmsi, "DS\\'|DP\\'|DD\\'")
 ```
 
 ```{r dm CCAM, include = FALSE}
@@ -85,54 +76,83 @@ names(rouen_codes_ccam) <- tolower(names(rouen_codes_ccam))
 ```
 
 ```{r dm SEJOURS, include = F}
-# names to lower case
-names(rouen_sej_pmsi) <- tolower(names(rouen_sej_pmsi))
+# Convert column names to lowercase
+colnames(rouen_sej_pmsi) <- tolower(colnames(rouen_sej_pmsi))
 
-# Preparing dictionary for join
-names(dictionnaire) <- c("code", "label")
+# Prepare dictionary for join
+colnames(dictionnaire) <- c("code", "label")
 dictionnaire$code <- as.character(dictionnaire$code)
 
-# Joining labels to main table
-rouen <-
-  left_join(rouen_sej_pmsi, dictionnaire, by = c("modeent" = "code")) %>%
-  rename(modeent_label = label) %>%
-  left_join(dictionnaire, by = c("modesort" = "code")) %>%
-  rename(modesort_label = label)
+# Join labels to the main table
+rouen <- rouen_sej_pmsi %>%
+  left_join(dictionnaire[c("code","modeent_label")], by = c("modeent" = "code")) %>%
+  left_join(dictionnaire[c("code","modesort_label")], by = c("modesort" = "code"))
 
-# Replacing "retour du domicile" with "retour AU domicile")
-rouen$modesort_label[which(rouen$modesort_label == "Du domicile")] <- "Au domicile"
+# Replace "retour du domicile" with "retour au domicile"
+rouen$modesort_label <- case_when(
+  rouen$modesort_label == "Du domicile" ~ "Au domicile",
+  TRUE ~ rouen$modesort_label
+)
+
 ```
 
 ```{r dm joining tables, include = F}
-names(rouen_codes_pmsi) <- tolower(names(rouen_codes_pmsi))
-# Adding pmsi codes table
-rouen <- left_join(rouen, rouen_codes_pmsi)
-# Adding ccam acts table
-rouen <-
-  left_join(rouen, rouen_codes_ccam[c("patid", "evtid", "codeacte", "texte")]) %>%
+# Convert column names to lowercase
+colnames(rouen_codes_pmsi) <- tolower(colnames(rouen_codes_pmsi))
+
+# Join pmsi codes table
+rouen <- rouen %>%
+  left_join(rouen_codes_pmsi)
+
+# Join ccam acts table
+rouen <- rouen %>%
+  left_join(select(rouen_codes_ccam, patid, evtid, codeacte, texte),
+            by = c("patid", "evtid")) %>%
   rename(acte = codeacte, acte_label = texte)
 
-rouen <- distinct(rouen) # erasing eventual duplicates
+# Remove duplicates
+rouen <- distinct(rouen)
+
+
+
+
 ```
 
 # Descriptive analysis
 ```{r include=F}
-rouen$sejdur <- as.numeric(rouen$sejdur)
+# ATCD cardio
+rouen$acvd = ifelse(rouen$patid %in% has_acvd$PATID,1,0)
 
-unique_ids <- length(unique(rouen$patid))
-unique_stays <- length(unique(rouen$evtid))
+rouen <- rouen %>%
+  mutate(sejdur = as.numeric(sejdur))
 
-rouen$patage <- as.numeric(rouen$patage)
-mean_age <- round(mean(rouen$patage, na.rm = T), 2)
-female_mean_age <- round(by(rouen$patage, rouen$patsex, mean, na.rm = T)[["F"]], 2)
-male_mean_age <- round(by(rouen$patage, rouen$patsex, mean, na.rm = T)[["M"]], 2)
+unique_ids <- rouen %>%
+  pull(patid) %>%
+  n_distinct()
 
-# How many stays started with an arrival from personal home
+unique_stays <- rouen %>%
+  pull(evtid) %>%
+  n_distinct()
+
+mean_age <- rouen %>%
+  mutate(patage = as.numeric(patage)) %>%
+  summarize(mean_age = round(mean(patage, na.rm = TRUE), 2)) %>%
+  pull(mean_age)
+
+female_mean_age <- rouen %>%
+  filter(patsex == "F") %>%
+  summarize(female_mean_age = round(mean(as.numeric(patage), na.rm = TRUE), 2)) %>%
+  pull(female_mean_age)
+
+male_mean_age <- rouen %>%
+  filter(patsex == "M") %>%
+  summarize(male_mean_age = round(mean(as.numeric(patage), na.rm = TRUE), 2)) %>%
+  pull(male_mean_age)
+
 entry_mode <- rouen %>%
-  select(evtid, sejum, modeent_label) %>%
   filter(sejum == "URGE" & modeent_label == "Du domicile") %>%
-  distinct() %>%
-  nrow()
+  summarize(entry_mode = n()) %>%
+  pull(entry_mode)
 ```
 
 We have `r unique_ids` **unique patients** and `r unique_stays` **unique hospital stays/emergency ward visits** so basically every patient consulted only once for dental problems, at the hospital, over the period of interest which is the calendar year 2021.
@@ -141,11 +161,13 @@ We have `r unique_ids` **unique patients** and `r unique_stays` **unique hospita
 **Mean age** for both sex combined is `r mean_age` years (*sd* = `r round(sd(rouen$patage),2)`) while it's `r female_mean_age` (*sd* = `r round(sd(rouen$patage[rouen$patsex=="F"]),2)`) for women and `r male_mean_age` (*sd* = `r round(sd(rouen$patage[rouen$patsex=="M"]),2)`) for men.
 
 ```{r age distribution, echo = F}
+library(ggplot2)
+
 rouen %>%
   select(patid, evtid, patage, patsex) %>%
   distinct() %>%
-  ggplot() +
-  geom_histogram(aes(x = patage), binwidth = 5, color = "white", boundary = .5) +
+  ggplot(aes(x = as.numeric(patage))) +
+  geom_histogram(binwidth = 5, color = "white", boundary = 0.5) +
   scale_x_continuous(breaks = seq(0, 100, 5)) +
   scale_y_continuous(breaks = seq(0, 100, 10)) +
   labs(
@@ -154,27 +176,24 @@ rouen %>%
     y = "Frequency"
   )
 
-
 tab <- rouen %>%
   select(patid, patage, patsex) %>%
-  distinct()
+  distinct() %>% mutate(as.numeric(patage))
 
-ggplot(
-  data = tab,
-  aes(x = cut(patage, breaks = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100), 
-              labels = c("0-10", "11-20", "21-30", "31-40", "41-50", "51-60", "61-70", 
-                         "71-80", "81-90", "91-100")), 
-      fill = factor(patsex))) +
-  geom_bar(data = subset(tab, tab$patsex == "F"), position = "identity") +
-  geom_bar(data = subset(tab, tab$patsex == "M"), aes(y = after_stat(count) * (-1))) +
-  scale_y_continuous(breaks = seq(-1000, 1000, 50)) +
-  coord_flip() +
-  labs(
-    title = "Patient's age distribution by sex",
-    fill = "Gender",
-    y = "Age",
-    x = "Count"
-  )
+ggplot(data = tab, aes(x = cut(as.numeric(patage), breaks = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100), 
+                               labels = c("0-10", "11-20", "21-30", "31-40", "41-50", "51-60", "61-70", 
+                                          "71-80", "81-90", "91-100")), 
+                       fill = factor(patsex))) +
+    geom_bar(data = subset(tab, tab$patsex == "F"), position = "identity") +
+    geom_bar(data = subset(tab, tab$patsex == "M"), aes(y = after_stat(count) * (-1))) +
+    scale_y_continuous(breaks = seq(-1000, 1000, 5)) +
+    coord_flip() +
+    labs(
+        y = "Count",
+        x = "Age",
+        fill = "Gender", title = "Patient's age distribution by sex"
+    )
+
 
 
 rouen %>%
@@ -293,7 +312,16 @@ patient_with_atb <- rouen_atb %>%
   distinct() %>%
   nrow()
 
+# Patient qui ont recu IV 
 patient_with_iv <- as.vector(na.omit(rouen_atb$patid[rouen_atb$voie == "iv"]))
+
+# Both os and iv
+rouen_atb %>% filter(patid %in% patient_with_iv) %>% filter(voie=="os") %$% n_distinct(patid)
+
+# ATBs par patient
+rouen_atb %>% select(patid,molecule) %>% filter(!is.na(molecule)) %>% group_by(patid) %>% summarise(n=n()) %>% arrange(desc(n)) %>% print(n=30)
+
+
 ```
 
 Among `r unique_ids` patients, `r patient_with_atb` **received an antibiotic** prescription accounting for a total of `r total_atb_prescribed` **antibiotics prescribed**: `r round(total_atb_prescribed/unique_ids,2)` on **average**, considering the whole sample, `r round((total_atb_prescribed-length(patient_with_iv))/patient_with_atb,2)` if we consider only those who received them.
